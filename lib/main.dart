@@ -11,6 +11,8 @@ import 'package:dev_toolbox/tools/cron_tool.dart';
 import 'package:dev_toolbox/tools/xml_json_tool.dart';
 import 'package:dev_toolbox/tools/diff_tool.dart';
 
+import 'package:url_launcher/url_launcher.dart';
+
 void main() {
   runApp(const DevToolboxApp());
 }
@@ -54,6 +56,13 @@ class _MainWindowState extends State<MainWindow> {
     const XmlJsonTool(),
     const DiffTool(),
   ];
+
+  Future<void> _launchUrl() async {
+    final Uri url = Uri.parse('https://github.com/253506088/dev_toolbox');
+    if (!await launchUrl(url)) {
+      throw Exception('Could not launch $url');
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -117,6 +126,20 @@ class _MainWindowState extends State<MainWindow> {
                     label: Text('Diff'),
                   ),
                 ],
+                trailing: Padding(
+                  padding: const EdgeInsets.only(top: 20),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.code),
+                        tooltip: 'GitHub',
+                        onPressed: _launchUrl,
+                      ),
+                      const Text('GitHub'),
+                    ],
+                  ),
+                ),
               ),
             ),
           ),
