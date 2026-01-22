@@ -13,6 +13,7 @@ class _CronToolState extends State<CronTool> with TickerProviderStateMixin {
   late TabController _tabController;
   final TextEditingController _expressionController = TextEditingController();
   List<String> _nextRunTimes = [];
+  int _rebuildKey = 0; // Used to force rebuild of CronFieldEditor widgets
 
   // State for each field: 0:Second, 1:Minute, 2:Hour, 3:Day, 4:Month, 5:Week, 6:Year
   final List<CronFieldState> _fields = [
@@ -130,6 +131,7 @@ class _CronToolState extends State<CronTool> with TickerProviderStateMixin {
       for (int i = 0; i < parts.length && i < _fields.length; i++) {
         _fields[i].parse(parts[i]);
       }
+      _rebuildKey++; // Force rebuild of CronFieldEditor widgets
       _calcNextRunTimes();
     });
   }
@@ -147,9 +149,12 @@ class _CronToolState extends State<CronTool> with TickerProviderStateMixin {
           child: TabBarView(
             controller: _tabController,
             children: _fields
+                .asMap()
+                .entries
                 .map(
-                  (field) => CronFieldEditor(
-                    state: field,
+                  (entry) => CronFieldEditor(
+                    key: ValueKey('${entry.key}_$_rebuildKey'),
+                    state: entry.value,
                     onChanged: _updateExpression,
                   ),
                 )
