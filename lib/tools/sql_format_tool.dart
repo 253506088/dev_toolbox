@@ -163,9 +163,11 @@ class _SqlFormatToolState extends State<SqlFormatTool> {
       if (upper == 'AND' && funcDepth == 0) {
         // 在 ON 子句中保持同行，在 WHERE 中换行
         String resultStr = result.toString();
-        bool afterOn =
-            resultStr.contains(' ON ') && !resultStr.trimRight().endsWith('\n');
-        if (afterOn || subqueryDepth > 0) {
+        // 检查是否在 ON 子句中（ON 后面且没有遇到 WHERE）
+        int lastOn = resultStr.lastIndexOf(' ON ');
+        int lastWhere = resultStr.lastIndexOf('WHERE ');
+        bool inOnClause = lastOn > lastWhere;
+        if (inOnClause) {
           result.write(' AND ');
         } else {
           _writeNewlineIndent(result, indentLevel);
@@ -246,10 +248,9 @@ class _SqlFormatToolState extends State<SqlFormatTool> {
 
         // 检查是否是子查询
         if (nextUpper == 'SELECT') {
-          result.write('(\n');
+          result.write('(');
           indentLevel++;
           subqueryDepth++;
-          _writeIndent(result, indentLevel);
           i++;
           continue;
         }
@@ -446,6 +447,13 @@ class _SqlFormatToolState extends State<SqlFormatTool> {
   }
 
   @override
+  void dispose() {
+    _controller.dispose();
+    _focusNode.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.all(16.0),
@@ -484,186 +492,27 @@ class _SqlFormatToolState extends State<SqlFormatTool> {
           ),
           const SizedBox(height: 16),
           Expanded(
-            child: Container(
-              decoration: BoxDecoration(
-                border: Border.all(color: Colors.grey.shade300),
-                borderRadius: BorderRadius.circular(4),
-                color: const Color(0xFF1E1E1E),
+            child: TextField(
+              controller: _controller,
+              focusNode: _focusNode,
+              maxLines: null,
+              expands: true,
+              textAlignVertical: TextAlignVertical.top,
+              style: const TextStyle(
+                fontFamily: 'Consolas',
+                fontSize: 14,
+                color: Colors.black87,
+                height: 1.5,
               ),
-              child: Stack(
-                children: [
-                  Positioned.fill(
-                    child: SingleChildScrollView(
-                      padding: const EdgeInsets.all(12),
-                      child: _buildHighlightedText(_controller.text),
-                    ),
-                  ),
-                  Positioned.fill(
-                    child: TextField(
-                      controller: _controller,
-                      focusNode: _focusNode,
-                      maxLines: null,
-                      expands: true,
-                      textAlignVertical: TextAlignVertical.top,
-                      style: const TextStyle(
-                        fontFamily: 'Consolas',
-                        fontSize: 14,
-                        color: Colors.transparent,
-                        height: 1.5,
-                      ),
-                      cursorColor: Colors.white,
-                      decoration: const InputDecoration(
-                        border: InputBorder.none,
-                        contentPadding: EdgeInsets.all(12),
-                        hintText: '在此输入 SQL 语句...',
-                        hintStyle: TextStyle(color: Colors.grey),
-                      ),
-                      onChanged: (value) => setState(() {}),
-                    ),
-                  ),
-                ],
+              decoration: const InputDecoration(
+                border: OutlineInputBorder(),
+                contentPadding: EdgeInsets.all(12),
+                hintText: '在此输入 SQL 语句...',
               ),
             ),
           ),
         ],
       ),
     );
-  }
-
-  Widget _buildHighlightedText(String text) {
-    if (text.isEmpty) {
-      return const Text(
-        '在此输入 SQL 语句...',
-        style: TextStyle(
-          color: Colors.grey,
-          fontFamily: 'Consolas',
-          fontSize: 14,
-          height: 1.5,
-        ),
-      );
-    }
-
-    List<InlineSpan> spans = [];
-    int i = 0;
-
-    while (i < text.length) {
-      String char = text[i];
-
-      if (char == "'" || char == '"') {
-        int end = _findStringEnd(text, i, char);
-        spans.add(
-          TextSpan(
-            text: text.substring(i, end),
-            style: const TextStyle(
-              color: Color(0xFFCE9178),
-              fontFamily: 'Consolas',
-              fontSize: 14,
-              height: 1.5,
-            ),
-          ),
-        );
-        i = end;
-        continue;
-      }
-
-      if (char == '`') {
-        int end = text.indexOf('`', i + 1);
-        if (end == -1)
-          end = text.length;
-        else
-          end++;
-        spans.add(
-          TextSpan(
-            text: text.substring(i, end),
-            style: const TextStyle(
-              color: Color(0xFF9CDCFE),
-              fontFamily: 'Consolas',
-              fontSize: 14,
-              height: 1.5,
-            ),
-          ),
-        );
-        i = end;
-        continue;
-      }
-
-      if (RegExp(r'[a-zA-Z_]').hasMatch(char)) {
-        int end = i;
-        while (end < text.length && RegExp(r'[a-zA-Z0-9_]').hasMatch(text[end]))
-          end++;
-        String word = text.substring(i, end);
-        Color color = Colors.white;
-        FontWeight weight = FontWeight.normal;
-        if (_keywords.contains(word.toUpperCase())) {
-          color = const Color(0xFF569CD6);
-          weight = FontWeight.bold;
-        } else if (_functions.contains(word.toUpperCase())) {
-          color = const Color(0xFFDCDCAA);
-        }
-        spans.add(
-          TextSpan(
-            text: word,
-            style: TextStyle(
-              color: color,
-              fontFamily: 'Consolas',
-              fontSize: 14,
-              height: 1.5,
-              fontWeight: weight,
-            ),
-          ),
-        );
-        i = end;
-        continue;
-      }
-
-      if (RegExp(r'[0-9]').hasMatch(char)) {
-        int end = i;
-        while (end < text.length && RegExp(r'[0-9.]').hasMatch(text[end]))
-          end++;
-        spans.add(
-          TextSpan(
-            text: text.substring(i, end),
-            style: const TextStyle(
-              color: Color(0xFFB5CEA8),
-              fontFamily: 'Consolas',
-              fontSize: 14,
-              height: 1.5,
-            ),
-          ),
-        );
-        i = end;
-        continue;
-      }
-
-      spans.add(
-        TextSpan(
-          text: char,
-          style: const TextStyle(
-            color: Colors.white,
-            fontFamily: 'Consolas',
-            fontSize: 14,
-            height: 1.5,
-          ),
-        ),
-      );
-      i++;
-    }
-
-    return RichText(text: TextSpan(children: spans));
-  }
-
-  int _findStringEnd(String text, int start, String quote) {
-    int i = start + 1;
-    while (i < text.length) {
-      if (text[i] == quote) {
-        if (i + 1 < text.length && text[i + 1] == quote) {
-          i += 2;
-          continue;
-        }
-        return i + 1;
-      }
-      i++;
-    }
-    return text.length;
   }
 }
