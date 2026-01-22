@@ -2,7 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:file_selector/file_selector.dart';
 import 'package:desktop_drop/desktop_drop.dart';
-import 'package:flutter/services.dart';
+import 'package:flutter_zxing/flutter_zxing.dart';
+import 'package:pasteboard/pasteboard.dart';
+import 'package:image/image.dart' as img;
+import 'dart:io';
+import 'dart:typed_data';
 
 class QrTool extends StatefulWidget {
   const QrTool({super.key});
@@ -33,16 +37,81 @@ class _QrToolState extends State<QrTool> {
     }
   }
 
+  Future<void> _pasteImage() async {
+    final imageBytes = await Pasteboard.image;
+    if (imageBytes != null) {
+      // 直接使用 memory image 解码，避免临时文件文件读写和路径问题
+      _decodeBytes(imageBytes, "Clipboard Image");
+    } else {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('剪贴板中没有图片')));
+      }
+    }
+  }
+
   Future<void> _decodeImage(String path) async {
-    // Note: Pure Dart QR decoding on desktop is complex.
-    // For a production app, consider using platform channels or a dedicated library.
-    // For now, we'll show a placeholder message.
-    setState(() {
-      _decodedController.text =
-          "二维码解析功能暂不可用于Windows桌面端。\n\n"
-          "选择的文件路径: $path\n\n"
-          "提示: 可以使用在线工具或手机扫描来解析二维码。";
-    });
+    try {
+      final file = File(path);
+      if (await file.exists()) {
+        final bytes = await file.readAsBytes();
+        _decodeBytes(bytes, path);
+      } else {
+        setState(() {
+          _decodedController.text = "文件不存在: $path";
+        });
+      }
+    } catch (e) {
+      setState(() {
+        _decodedController.text = "读取文件失败: $e";
+      });
+    }
+  }
+
+  void _decodeBytes(Uint8List bytes, String sourceName) {
+    try {
+      final img.Image? image = img.decodeImage(bytes);
+      if (image == null) {
+        setState(() {
+          _decodedController.text = "无法解码图片数据 (Decode failed)";
+        });
+        return;
+      }
+
+      // 强制转换为 RGBA (4通道) 以匹配 zxing ImageFormat.rgbx (或使用 lum)
+      // 使用 rgbx 因为 image 包默认处理比较方便，zxing 也支持
+      final Uint8List rawBytes = image.getBytes(order: img.ChannelOrder.rgba);
+
+      // 尝试参数调整
+      final params = DecodeParams(
+        width: image.width,
+        height: image.height,
+        imageFormat: ImageFormat.rgbx,
+        tryInverted: true,
+        tryHarder: true,
+      );
+
+      final Code result = zx.readBarcode(rawBytes, params);
+
+      if (result.isValid == true) {
+        setState(() {
+          _decodedController.text = result.text ?? "解析成功，但文本为空";
+        });
+      } else {
+        final errorMsg = result.error?.isNotEmpty == true
+            ? result.error
+            : "未识别到二维码 (Could not find barcode)";
+        setState(() {
+          _decodedController.text =
+              "Error ($sourceName):\n$errorMsg\n\nDebug Info:\nIsValid: ${result.isValid}\nFormat: ${result.format}\nImage: ${image.width}x${image.height} (${rawBytes.lengthInBytes} bytes)";
+        });
+      }
+    } catch (e, stack) {
+      setState(() {
+        _decodedController.text = "解析异常 ($sourceName): $e\n$stack";
+      });
+    }
   }
 
   @override
@@ -137,19 +206,18 @@ class _QrToolState extends State<QrTool> {
                                   ),
                                   SizedBox(height: 8),
                                   Text("点击上传或拖拽图片到此处"),
-                                  SizedBox(height: 4),
-                                  Text(
-                                    "(解析功能暂不可用)",
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      color: Colors.orange,
-                                    ),
-                                  ),
                                 ],
                               ),
                             ),
                           ),
                         ),
+                      ),
+                      const SizedBox(height: 16),
+                      // Paste Button
+                      ElevatedButton.icon(
+                        onPressed: _pasteImage,
+                        icon: const Icon(Icons.paste),
+                        label: const Text("从剪贴板粘贴图片"),
                       ),
                       const SizedBox(height: 16),
                       const Text("解析结果:"),
