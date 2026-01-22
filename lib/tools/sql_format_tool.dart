@@ -124,6 +124,7 @@ class _SqlFormatToolState extends State<SqlFormatTool> {
     bool inSelectColumns = false;
     int funcDepth = 0; // 函数括号深度
     int subqueryDepth = 0; // 子查询括号深度
+    int parenDepth = 0; // 普通括号深度（WHERE 条件中的）
 
     while (i < tokens.length) {
       String token = tokens[i];
@@ -179,8 +180,13 @@ class _SqlFormatToolState extends State<SqlFormatTool> {
 
       // ========== OR ==========
       if (upper == 'OR' && funcDepth == 0) {
-        _writeNewlineIndent(result, indentLevel);
-        result.write('OR ');
+        // 在括号内的 OR 保持同行
+        if (parenDepth > 0) {
+          result.write(' OR ');
+        } else {
+          _writeNewlineIndent(result, indentLevel);
+          result.write('OR ');
+        }
         i++;
         continue;
       }
@@ -255,7 +261,8 @@ class _SqlFormatToolState extends State<SqlFormatTool> {
           continue;
         }
 
-        // 普通括号
+        // 普通括号 - 追踪深度
+        parenDepth++;
         result.write('(');
         i++;
         continue;
@@ -283,6 +290,8 @@ class _SqlFormatToolState extends State<SqlFormatTool> {
           _writeIndent(result, indentLevel);
           result.write(')');
         } else {
+          // 普通括号
+          if (parenDepth > 0) parenDepth--;
           result.write(')');
         }
         i++;
