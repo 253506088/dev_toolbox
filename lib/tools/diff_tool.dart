@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:diff_match_patch/diff_match_patch.dart';
 
 class DiffTool extends StatefulWidget {
@@ -14,6 +15,7 @@ class _DiffToolState extends State<DiffTool> {
   final ScrollController _leftScrollController = ScrollController();
   final ScrollController _rightScrollController = ScrollController();
   final ScrollController _navScrollController = ScrollController();
+  final FocusNode _diffFocusNode = FocusNode();
 
   List<DiffLine> _leftLines = [];
   List<DiffLine> _rightLines = [];
@@ -34,6 +36,7 @@ class _DiffToolState extends State<DiffTool> {
     _leftScrollController.dispose();
     _rightScrollController.dispose();
     _navScrollController.dispose();
+    _diffFocusNode.dispose();
     super.dispose();
   }
 
@@ -318,6 +321,43 @@ class _DiffToolState extends State<DiffTool> {
     });
   }
 
+  KeyEventResult _handleKeyEvent(FocusNode node, KeyEvent event) {
+    if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
+      return KeyEventResult.ignored;
+    }
+
+    if (!_leftScrollController.hasClients) return KeyEventResult.ignored;
+
+    final double currentOffset = _leftScrollController.offset;
+    final double maxOffset = _leftScrollController.position.maxScrollExtent;
+    final double viewportHeight =
+        _leftScrollController.position.viewportDimension;
+
+    if (event.logicalKey == LogicalKeyboardKey.home) {
+      _leftScrollController.jumpTo(0);
+      return KeyEventResult.handled;
+    } else if (event.logicalKey == LogicalKeyboardKey.end) {
+      _leftScrollController.jumpTo(maxOffset);
+      return KeyEventResult.handled;
+    } else if (event.logicalKey == LogicalKeyboardKey.pageUp) {
+      _leftScrollController.animateTo(
+        (currentOffset - viewportHeight).clamp(0.0, maxOffset),
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.easeOut,
+      );
+      return KeyEventResult.handled;
+    } else if (event.logicalKey == LogicalKeyboardKey.pageDown) {
+      _leftScrollController.animateTo(
+        (currentOffset + viewportHeight).clamp(0.0, maxOffset),
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.easeOut,
+      );
+      return KeyEventResult.handled;
+    }
+
+    return KeyEventResult.ignored;
+  }
+
   @override
   Widget build(BuildContext context) {
     return Padding(
@@ -418,35 +458,42 @@ class _DiffToolState extends State<DiffTool> {
           const SizedBox(height: 8),
           // Diff result view
           Expanded(
-            child: Container(
-              decoration: BoxDecoration(
-                border: Border.all(color: Colors.grey.shade300),
-                borderRadius: BorderRadius.circular(4),
-              ),
-              child: Row(
-                children: [
-                  // Left panel
-                  Expanded(
-                    child: _buildDiffPanel(
-                      _leftLines,
-                      _leftScrollController,
-                      true,
-                    ),
+            child: GestureDetector(
+              onTap: () => _diffFocusNode.requestFocus(),
+              child: Focus(
+                focusNode: _diffFocusNode,
+                onKeyEvent: _handleKeyEvent,
+                child: Container(
+                  decoration: BoxDecoration(
+                    border: Border.all(color: Colors.grey.shade300),
+                    borderRadius: BorderRadius.circular(4),
                   ),
-                  // Divider
-                  Container(width: 1, color: Colors.grey.shade300),
-                  // Right panel
-                  Expanded(
-                    child: _buildDiffPanel(
-                      _rightLines,
-                      _rightScrollController,
-                      false,
-                    ),
+                  child: Row(
+                    children: [
+                      // Left panel
+                      Expanded(
+                        child: _buildDiffPanel(
+                          _leftLines,
+                          _leftScrollController,
+                          true,
+                        ),
+                      ),
+                      // Divider
+                      Container(width: 1, color: Colors.grey.shade300),
+                      // Right panel
+                      Expanded(
+                        child: _buildDiffPanel(
+                          _rightLines,
+                          _rightScrollController,
+                          false,
+                        ),
+                      ),
+                      // Navigation bar
+                      Container(width: 1, color: Colors.grey.shade300),
+                      _buildNavigationBar(),
+                    ],
                   ),
-                  // Navigation bar
-                  Container(width: 1, color: Colors.grey.shade300),
-                  _buildNavigationBar(),
-                ],
+                ),
               ),
             ),
           ),
