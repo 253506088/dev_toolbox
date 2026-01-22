@@ -165,7 +165,7 @@ class _DiffToolState extends State<DiffTool> {
   }
 
   void _alignLines() {
-    // Simple alignment: ensure both lists have same length by adding empty lines
+    final dmp = DiffMatchPatch();
     List<DiffLine> alignedLeft = [];
     List<DiffLine> alignedRight = [];
 
@@ -178,17 +178,68 @@ class _DiffToolState extends State<DiffTool> {
           left.type == DiffType.equal &&
           right != null &&
           right.type == DiffType.equal) {
+        // 两边都是相同行
         alignedLeft.add(left);
         alignedRight.add(right);
         li++;
         ri++;
+      } else if (left != null &&
+          left.type == DiffType.delete &&
+          right != null &&
+          right.type == DiffType.insert) {
+        // 关键：delete + insert 配对，进行行内 diff
+        final inlineDiffs = dmp.diff(left.text, right.text);
+        dmp.diffCleanupSemantic(inlineDiffs);
+
+        // 生成左侧 segments（删除部分高亮）
+        List<DiffSegment> leftSegments = [];
+        for (var d in inlineDiffs) {
+          if (d.operation == DIFF_EQUAL) {
+            leftSegments.add(DiffSegment(text: d.text, isChanged: false));
+          } else if (d.operation == DIFF_DELETE) {
+            leftSegments.add(DiffSegment(text: d.text, isChanged: true));
+          }
+          // DIFF_INSERT 在左侧不显示
+        }
+
+        // 生成右侧 segments（插入部分高亮）
+        List<DiffSegment> rightSegments = [];
+        for (var d in inlineDiffs) {
+          if (d.operation == DIFF_EQUAL) {
+            rightSegments.add(DiffSegment(text: d.text, isChanged: false));
+          } else if (d.operation == DIFF_INSERT) {
+            rightSegments.add(DiffSegment(text: d.text, isChanged: true));
+          }
+          // DIFF_DELETE 在右侧不显示
+        }
+
+        alignedLeft.add(
+          DiffLine(
+            lineNum: left.lineNum,
+            text: left.text,
+            type: DiffType.modified,
+            segments: leftSegments,
+          ),
+        );
+        alignedRight.add(
+          DiffLine(
+            lineNum: right.lineNum,
+            text: right.text,
+            type: DiffType.modified,
+            segments: rightSegments,
+          ),
+        );
+        li++;
+        ri++;
       } else if (left != null && left.type == DiffType.delete) {
+        // 纯删除行
         alignedLeft.add(left);
         alignedRight.add(
           DiffLine(lineNum: null, text: '', type: DiffType.placeholder),
         );
         li++;
       } else if (right != null && right.type == DiffType.insert) {
+        // 纯插入行
         alignedLeft.add(
           DiffLine(lineNum: null, text: '', type: DiffType.placeholder),
         );
@@ -221,20 +272,18 @@ class _DiffToolState extends State<DiffTool> {
     _leftLines = alignedLeft;
     _rightLines = alignedRight;
 
-    // Recalculate change positions
+    // Recalculate change positions - 配对的modified只计一次差异
     _changePositions = [];
     for (int i = 0; i < _leftLines.length; i++) {
-      if (_leftLines[i].type != DiffType.equal &&
-          _leftLines[i].type != DiffType.placeholder) {
+      DiffType leftType = _leftLines[i].type;
+      DiffType rightType = _rightLines[i].type;
+
+      if (leftType == DiffType.modified || rightType == DiffType.modified) {
+        // 配对修改只算一处差异
         _changePositions.add(i);
-      }
-    }
-    for (int i = 0; i < _rightLines.length; i++) {
-      if (_rightLines[i].type != DiffType.equal &&
-          _rightLines[i].type != DiffType.placeholder) {
-        if (!_changePositions.contains(i)) {
-          _changePositions.add(i);
-        }
+      } else if (leftType == DiffType.delete || rightType == DiffType.insert) {
+        // 纯删除或纯插入
+        _changePositions.add(i);
       }
     }
     _changePositions.sort();
@@ -419,13 +468,25 @@ class _DiffToolState extends State<DiffTool> {
         final line = lines[index];
         Color? bgColor;
         Color? lineNumColor = Colors.grey;
+        String? indicator;
+        Color? indicatorColor;
 
         if (line.type == DiffType.delete) {
           bgColor = Colors.red.shade50;
           lineNumColor = Colors.red;
+          indicator = '-';
+          indicatorColor = Colors.red;
         } else if (line.type == DiffType.insert) {
           bgColor = Colors.green.shade50;
           lineNumColor = Colors.green;
+          indicator = '+';
+          indicatorColor = Colors.green;
+        } else if (line.type == DiffType.modified) {
+          // 修改行：浅黄色背景
+          bgColor = Colors.amber.shade50;
+          lineNumColor = Colors.orange;
+          indicator = '~';
+          indicatorColor = Colors.orange;
         } else if (line.type == DiffType.placeholder) {
           bgColor = Colors.grey.shade100;
         }
@@ -454,43 +515,81 @@ class _DiffToolState extends State<DiffTool> {
               Container(
                 width: 20,
                 alignment: Alignment.center,
-                child: line.type == DiffType.delete
-                    ? const Text(
-                        '-',
+                child: indicator != null
+                    ? Text(
+                        indicator,
                         style: TextStyle(
-                          color: Colors.red,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      )
-                    : line.type == DiffType.insert
-                    ? const Text(
-                        '+',
-                        style: TextStyle(
-                          color: Colors.green,
+                          color: indicatorColor,
                           fontWeight: FontWeight.bold,
                         ),
                       )
                     : null,
               ),
-              // Content
+              // Content - 使用 RichText 渲染行内差异
               Expanded(
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 4),
-                  child: Text(
-                    line.text,
-                    style: const TextStyle(
-                      fontSize: 13,
-                      fontFamily: 'Consolas',
-                    ),
-                    overflow: TextOverflow.clip,
-                    maxLines: 1,
-                  ),
+                  child: _buildLineContent(line, isLeft),
                 ),
               ),
             ],
           ),
         );
       },
+    );
+  }
+
+  /// 构建行内容，支持行内差异高亮
+  Widget _buildLineContent(DiffLine line, bool isLeft) {
+    if (line.type != DiffType.modified || line.segments.isEmpty) {
+      // 非修改行，直接显示文本
+      return Text(
+        line.text,
+        style: const TextStyle(fontSize: 13, fontFamily: 'Consolas'),
+        overflow: TextOverflow.clip,
+        maxLines: 1,
+      );
+    }
+
+    // 修改行：用 RichText 渲染 segments
+    List<InlineSpan> spans = [];
+    for (var segment in line.segments) {
+      if (segment.isChanged) {
+        // 差异部分：深色背景高亮
+        spans.add(
+          WidgetSpan(
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 1),
+              decoration: BoxDecoration(
+                color: isLeft ? Colors.red.shade200 : Colors.green.shade200,
+                borderRadius: BorderRadius.circular(2),
+              ),
+              child: Text(
+                segment.text,
+                style: const TextStyle(fontSize: 13, fontFamily: 'Consolas'),
+              ),
+            ),
+          ),
+        );
+      } else {
+        // 相同部分：正常显示
+        spans.add(
+          TextSpan(
+            text: segment.text,
+            style: const TextStyle(
+              fontSize: 13,
+              fontFamily: 'Consolas',
+              color: Colors.black87,
+            ),
+          ),
+        );
+      }
+    }
+
+    return RichText(
+      text: TextSpan(children: spans),
+      overflow: TextOverflow.clip,
+      maxLines: 1,
     );
   }
 
@@ -556,12 +655,26 @@ class _DiffToolState extends State<DiffTool> {
   }
 }
 
-enum DiffType { equal, insert, delete, placeholder }
+enum DiffType { equal, insert, delete, placeholder, modified }
+
+/// 行内差异片段
+class DiffSegment {
+  final String text;
+  final bool isChanged; // true = 差异部分，false = 相同部分
+
+  DiffSegment({required this.text, required this.isChanged});
+}
 
 class DiffLine {
   final int? lineNum;
   final String text;
   final DiffType type;
+  final List<DiffSegment> segments; // 行内差异片段
 
-  DiffLine({required this.lineNum, required this.text, required this.type});
+  DiffLine({
+    required this.lineNum,
+    required this.text,
+    required this.type,
+    List<DiffSegment>? segments,
+  }) : segments = segments ?? [DiffSegment(text: text, isChanged: false)];
 }
