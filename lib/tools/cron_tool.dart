@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:cron/cron.dart';
+import 'package:intl/intl.dart';
 
 class CronTool extends StatefulWidget {
   const CronTool({super.key});
@@ -12,24 +12,16 @@ class CronTool extends StatefulWidget {
 class _CronToolState extends State<CronTool> with TickerProviderStateMixin {
   late TabController _tabController;
   final TextEditingController _expressionController = TextEditingController();
-  String _runTimesPreview = "";
+  List<String> _nextRunTimes = [];
 
   // State for each field: 0:Second, 1:Minute, 2:Hour, 3:Day, 4:Month, 5:Week, 6:Year
-  // Each field has a mode: 0:Every, 1:Range, 2:Increment, 3:Specific (Set)
-  // And values associated.
-
   final List<CronFieldState> _fields = [
     CronFieldState(name: "秒", min: 0, max: 59),
     CronFieldState(name: "分钟", min: 0, max: 59),
     CronFieldState(name: "小时", min: 0, max: 23),
     CronFieldState(name: "日", min: 1, max: 31),
     CronFieldState(name: "月", min: 1, max: 12),
-    CronFieldState(
-      name: "周",
-      min: 1,
-      max: 7,
-      isWeek: true,
-    ), // 1=SUN? Quartz uses 1-7. Cron uses 0-6. Let's assume 1-7 (SUN-SAT) or MON-SUN. Usually 1=SUN in Quartz.
+    CronFieldState(name: "周", min: 1, max: 7, isWeek: true),
     CronFieldState(name: "年", min: 2024, max: 2099, optional: true),
   ];
 
@@ -48,82 +40,97 @@ class _CronToolState extends State<CronTool> with TickerProviderStateMixin {
   }
 
   void _updateExpression() {
-    // Check if Year is used (not every *)
-    bool useYear = _fields[6].mode != 0 || _fields[6].specificValues.isNotEmpty;
-
     List<String> parts = [];
-    for (int i = 0; i < (useYear ? 7 : 6); i++) {
+    for (int i = 0; i < 7; i++) {
       parts.add(_fields[i].toStringValue());
     }
 
-    // Quartz format: Sec Min Hour Day Month Week [Year]
-    // Standard Cron: Min Hour Day Month Week
-
-    // We generated Quartz-like string.
     String expr = parts.join(" ");
     if (_expressionController.text != expr) {
       _expressionController.text = expr;
     }
 
-    _calcRunTimes(expr);
-  }
-
-  void _calcRunTimes(String expr) {
-    // The 'cron' package supports standard 5-part cron.
-    // It might NOT support Seconds or Years.
-    // If we pass 6 parts, it might fail or handle it.
-    // Let's try to adapt.
-    // If 6 parts (and 1st is seconds), 'cron' package expects Min Hour ...
-    // So we can't use 'cron' package easily for Quartz preview if it doesn't support it.
-
-    // However, for "Preview", maybe we just show "Standard Cron" equivalent if possible or stub it.
-    // Since this is a complex task to write a full Quartz parser in one go,
-    // I will try to use 'cron' package if the expression fits 5 parts.
-    // If it has seconds (not 0) then standard cron can't represent it exactly (it runs every minute).
-
-    // Workaround:
-    // If Seconds is "0" (or specific value), we can try to show preview for the rest?
-    // Actually, let's just show the expression. Implementing full Quartz scheduler prediction is out of scope for a quick tool unless I have a library.
-    // I will simply try to parse with 'cron' package (stripping seconds/year) and show "Approximation (ignoring seconds/year)"
-
-    try {
-      var parts = expr.split(' ');
-      if (parts.length >= 6) {
-        // Assume first is seconds. Drop it for standard cron preview
-        String standard = parts.sublist(1, 6).join(' ');
-
-        final cron = Cron();
-        // We can't easily "predict" next runs with cron package without scheduling.
-        // Parse string manually?
-        // Let's just create a dummy schedule and see if we can get next execution?
-        // Use 'cron' package Schedule.parse to validate.
-
-        try {
-          Schedule schedule = Schedule.parse(standard);
-          // Verify if we can calculate next dates. The package doesn't expose 'next' easily.
-          _runTimesPreview = "Preview not available (Requires Quartz Parser)";
-        } catch (e) {
-          _runTimesPreview = "Invalid Standard Cron: $e";
-        }
-        cron.close();
-      }
-    } catch (e) {
-      _runTimesPreview = "Error: $e";
-    }
-
+    _calcNextRunTimes();
     setState(() {});
   }
 
+  void _calcNextRunTimes() {
+    // Calculate next 5 run times based on cron expression
+    try {
+      List<String> times = [];
+      DateTime now = DateTime.now();
+      DateTime current = DateTime(
+        now.year,
+        now.month,
+        now.day,
+        now.hour,
+        now.minute,
+        now.second,
+      );
+
+      int count = 0;
+      int maxIterations = 100000; // Prevent infinite loop
+      int iterations = 0;
+
+      while (count < 5 && iterations < maxIterations) {
+        iterations++;
+        current = current.add(const Duration(seconds: 1));
+
+        if (_matchesCron(current)) {
+          times.add(DateFormat('yyyy-MM-dd HH:mm:ss').format(current));
+          count++;
+        }
+      }
+
+      _nextRunTimes = times.isEmpty ? ["无法计算（表达式可能过于复杂）"] : times;
+    } catch (e) {
+      _nextRunTimes = ["计算错误: $e"];
+    }
+  }
+
+  bool _matchesCron(DateTime dt) {
+    // Check each field
+    if (!_matchesField(_fields[0], dt.second)) return false;
+    if (!_matchesField(_fields[1], dt.minute)) return false;
+    if (!_matchesField(_fields[2], dt.hour)) return false;
+    if (!_matchesField(_fields[3], dt.day)) return false;
+    if (!_matchesField(_fields[4], dt.month)) return false;
+    // Week: DateTime.weekday is 1=Monday, 7=Sunday. Cron usually 1=Sunday or 0=Sunday.
+    // Let's assume 1=Sunday, 2=Monday, ..., 7=Saturday (Quartz style)
+    int cronWeekday = dt.weekday == 7 ? 1 : dt.weekday + 1;
+    if (!_matchesField(_fields[5], cronWeekday)) return false;
+    if (!_matchesField(_fields[6], dt.year)) return false;
+    return true;
+  }
+
+  bool _matchesField(CronFieldState field, int value) {
+    if (field.mode == 0) return true; // Every (*)
+    if (field.mode == 1) {
+      // Range
+      return value >= field.rangeStart && value <= field.rangeEnd;
+    }
+    if (field.mode == 2) {
+      // Increment: start/interval
+      if (value < field.start) return false;
+      return (value - field.start) % field.interval == 0;
+    }
+    if (field.mode == 3) {
+      // Specific values
+      return field.specificValues.contains(value);
+    }
+    return true;
+  }
+
   void _onReverseParse() {
-    // Parse _expressionController.text to UI
     String text = _expressionController.text.trim();
     List<String> parts = text.split(RegExp(r'\s+'));
-    if (parts.length < 6) return; // Too short
+    if (parts.length < 6) return;
 
     setState(() {
       for (int i = 0; i < parts.length && i < _fields.length; i++) {
         _fields[i].parse(parts[i]);
       }
+      _calcNextRunTimes();
     });
   }
 
@@ -155,11 +162,78 @@ class _CronToolState extends State<CronTool> with TickerProviderStateMixin {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              // Field values table
+              const Text("表达式", style: TextStyle(fontWeight: FontWeight.bold)),
+              const SizedBox(height: 8),
+              Table(
+                border: TableBorder.all(color: Colors.grey.shade300),
+                children: [
+                  TableRow(
+                    decoration: BoxDecoration(color: Colors.grey.shade100),
+                    children: const [
+                      Padding(
+                        padding: EdgeInsets.all(8),
+                        child: Text("秒", textAlign: TextAlign.center),
+                      ),
+                      Padding(
+                        padding: EdgeInsets.all(8),
+                        child: Text("分钟", textAlign: TextAlign.center),
+                      ),
+                      Padding(
+                        padding: EdgeInsets.all(8),
+                        child: Text("小时", textAlign: TextAlign.center),
+                      ),
+                      Padding(
+                        padding: EdgeInsets.all(8),
+                        child: Text("日", textAlign: TextAlign.center),
+                      ),
+                      Padding(
+                        padding: EdgeInsets.all(8),
+                        child: Text("月", textAlign: TextAlign.center),
+                      ),
+                      Padding(
+                        padding: EdgeInsets.all(8),
+                        child: Text("星期", textAlign: TextAlign.center),
+                      ),
+                      Padding(
+                        padding: EdgeInsets.all(8),
+                        child: Text("年", textAlign: TextAlign.center),
+                      ),
+                    ],
+                  ),
+                  TableRow(
+                    children: _fields
+                        .map(
+                          (f) => Padding(
+                            padding: const EdgeInsets.all(8),
+                            child: Text(
+                              f.toStringValue(),
+                              textAlign: TextAlign.center,
+                            ),
+                          ),
+                        )
+                        .toList(),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
               Row(
                 children: [
                   const Text("Cron 表达式: "),
                   const SizedBox(width: 8),
-                  Expanded(child: TextField(controller: _expressionController)),
+                  Expanded(
+                    child: TextField(
+                      controller: _expressionController,
+                      decoration: const InputDecoration(
+                        isDense: true,
+                        contentPadding: EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 12,
+                        ),
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                  ),
                   const SizedBox(width: 8),
                   ElevatedButton(
                     onPressed: _onReverseParse,
@@ -167,10 +241,37 @@ class _CronToolState extends State<CronTool> with TickerProviderStateMixin {
                   ),
                 ],
               ),
-              const SizedBox(height: 8),
-              Text(
-                "最近运行时间: $_runTimesPreview",
-                style: const TextStyle(color: Colors.grey),
+              const SizedBox(height: 16),
+              // Next 5 run times
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.blue.shade50,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.blue.shade200),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      "最近5次运行时间:",
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: Colors.blue,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    ..._nextRunTimes.map(
+                      (t) => Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 2),
+                        child: Text(
+                          t,
+                          style: const TextStyle(fontFamily: 'monospace'),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ],
           ),
@@ -208,16 +309,14 @@ class CronFieldState {
   }
 
   String toStringValue() {
-    if (mode == 0) return "*";
+    if (mode == 0) return isWeek ? "?" : "*";
     if (mode == 1) return "$rangeStart-$rangeEnd";
     if (mode == 2) return "$start/$interval";
     if (mode == 3) {
-      if (specificValues.isEmpty) return isWeek ? "?" : "*"; // Fallback
+      if (specificValues.isEmpty) return isWeek ? "?" : "*";
       List<int> sorted = specificValues.toList()..sort();
       return sorted.join(",");
     }
-    if (mode == 4)
-      return "?"; // Special '?' for Day/Week conflict handling? Not fully impl
     return "*";
   }
 
@@ -225,7 +324,7 @@ class CronFieldState {
     if (token == "*" || token == "?") {
       mode = 0;
       specificValues.clear();
-    } else if (token.contains("-")) {
+    } else if (token.contains("-") && !token.contains("/")) {
       mode = 1;
       var p = token.split("-");
       rangeStart = int.tryParse(p[0]) ?? min;
@@ -233,7 +332,12 @@ class CronFieldState {
     } else if (token.contains("/")) {
       mode = 2;
       var p = token.split("/");
-      start = int.tryParse(p[0]) ?? min;
+      String startPart = p[0];
+      if (startPart == "*") {
+        start = min;
+      } else {
+        start = int.tryParse(startPart) ?? min;
+      }
       interval = int.tryParse(p[1]) ?? 1;
     } else {
       mode = 3;
@@ -368,30 +472,39 @@ class _CronFieldEditorState extends State<CronFieldEditor> {
           Padding(
             padding: const EdgeInsets.only(left: 16.0),
             child: Wrap(
-              spacing: 8,
+              spacing: 4,
+              runSpacing: 0,
               children: List.generate(widget.state.max - widget.state.min + 1, (
                 index,
               ) {
                 int val = widget.state.min + index;
                 return SizedBox(
-                  width: 60,
+                  width: 70,
                   child: Row(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      Checkbox(
-                        value: widget.state.specificValues.contains(val),
-                        onChanged: widget.state.mode == 3
-                            ? (b) {
-                                setState(() {
-                                  if (b!)
-                                    widget.state.specificValues.add(val);
-                                  else
-                                    widget.state.specificValues.remove(val);
-                                  widget.onChanged();
-                                });
-                              }
-                            : null,
+                      SizedBox(
+                        width: 24,
+                        height: 24,
+                        child: Checkbox(
+                          value: widget.state.specificValues.contains(val),
+                          onChanged: widget.state.mode == 3
+                              ? (b) {
+                                  setState(() {
+                                    if (b!)
+                                      widget.state.specificValues.add(val);
+                                    else
+                                      widget.state.specificValues.remove(val);
+                                    widget.onChanged();
+                                  });
+                                }
+                              : null,
+                        ),
                       ),
-                      Text(val.toString().padLeft(2, '0')),
+                      Text(
+                        val.toString().padLeft(2, '0'),
+                        style: const TextStyle(fontSize: 12),
+                      ),
                     ],
                   ),
                 );
