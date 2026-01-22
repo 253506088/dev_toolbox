@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:dev_toolbox/tools/sql_formatter_tool.dart';
+import 'package:dev_toolbox/tools/sql_in_formatter_tool.dart';
+import 'package:dev_toolbox/tools/sql_format_tool.dart';
 import 'package:dev_toolbox/tools/json_formatter_tool.dart';
 import 'package:dev_toolbox/tools/time_converter_tool.dart';
 import 'package:dev_toolbox/tools/base64_tool.dart';
@@ -41,7 +42,8 @@ class _MainWindowState extends State<MainWindow> {
   int _selectedIndex = 0;
 
   final List<Widget> _tools = [
-    const SqlFormatterTool(),
+    const SqlInFormatterTool(),
+    const SqlFormatTool(),
     const JsonFormatterTool(),
     const TimeConverterTool(),
     const Base64Tool(),
@@ -58,56 +60,65 @@ class _MainWindowState extends State<MainWindow> {
     return Scaffold(
       body: Row(
         children: [
-          NavigationRail(
-            selectedIndex: _selectedIndex,
-            onDestinationSelected: (int index) {
-              setState(() {
-                _selectedIndex = index;
-              });
-            },
-            labelType: NavigationRailLabelType.all,
-            destinations: const <NavigationRailDestination>[
-              NavigationRailDestination(
-                icon: Icon(Icons.format_quote),
-                label: Text('SQL'),
+          SingleChildScrollView(
+            child: IntrinsicHeight(
+              child: NavigationRail(
+                selectedIndex: _selectedIndex,
+                onDestinationSelected: (int index) {
+                  setState(() {
+                    _selectedIndex = index;
+                  });
+                },
+                labelType: NavigationRailLabelType.all,
+                minWidth: 80,
+                destinations: const <NavigationRailDestination>[
+                  NavigationRailDestination(
+                    icon: Icon(Icons.format_list_bulleted),
+                    label: Text('SQL IN'),
+                  ),
+                  NavigationRailDestination(
+                    icon: Icon(Icons.code),
+                    label: Text('SQL格式化'),
+                  ),
+                  NavigationRailDestination(
+                    icon: Icon(Icons.data_object),
+                    label: Text('JSON'),
+                  ),
+                  NavigationRailDestination(
+                    icon: Icon(Icons.access_time),
+                    label: Text('Time'),
+                  ),
+                  NavigationRailDestination(
+                    icon: Icon(Icons.code_off),
+                    label: Text('Base64'),
+                  ),
+                  NavigationRailDestination(
+                    icon: Icon(Icons.security),
+                    label: Text('MD5'),
+                  ),
+                  NavigationRailDestination(
+                    icon: Icon(Icons.link),
+                    label: Text('URL'),
+                  ),
+                  NavigationRailDestination(
+                    icon: Icon(Icons.qr_code),
+                    label: Text('QR Code'),
+                  ),
+                  NavigationRailDestination(
+                    icon: Icon(Icons.schedule),
+                    label: Text('Cron'),
+                  ),
+                  NavigationRailDestination(
+                    icon: Icon(Icons.transform),
+                    label: Text('XML/JSON'),
+                  ),
+                  NavigationRailDestination(
+                    icon: Icon(Icons.compare_arrows),
+                    label: Text('Diff'),
+                  ),
+                ],
               ),
-              NavigationRailDestination(
-                icon: Icon(Icons.data_object),
-                label: Text('JSON'),
-              ),
-              NavigationRailDestination(
-                icon: Icon(Icons.access_time),
-                label: Text('Time'),
-              ),
-              NavigationRailDestination(
-                icon: Icon(Icons.code),
-                label: Text('Base64'),
-              ),
-              NavigationRailDestination(
-                icon: Icon(Icons.security),
-                label: Text('MD5'),
-              ),
-              NavigationRailDestination(
-                icon: Icon(Icons.link),
-                label: Text('URL'),
-              ),
-              NavigationRailDestination(
-                icon: Icon(Icons.qr_code),
-                label: Text('QR Code'),
-              ),
-              NavigationRailDestination(
-                icon: Icon(Icons.schedule),
-                label: Text('Cron'),
-              ),
-              NavigationRailDestination(
-                icon: Icon(Icons.transform),
-                label: Text('XML/JSON'),
-              ),
-              NavigationRailDestination(
-                icon: Icon(Icons.compare_arrows),
-                label: Text('Diff'),
-              ),
-            ],
+            ),
           ),
           const VerticalDivider(thickness: 1, width: 1),
           Expanded(child: _tools[_selectedIndex]),
