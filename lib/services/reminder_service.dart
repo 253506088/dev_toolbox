@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'package:cron/cron.dart';
 import 'package:flutter/material.dart';
 import 'package:window_manager/window_manager.dart';
 import 'package:local_notifier/local_notifier.dart';
@@ -10,7 +11,7 @@ import 'holiday_service.dart';
 
 /// 提醒服务 - 定时检查并触发提醒
 class ReminderService {
-  static Timer? _timer;
+  static final _cron = Cron();
   static bool _initialized = false;
   static final List<void Function(StickyNote)> _listeners = [];
 
@@ -44,17 +45,18 @@ class ReminderService {
     await HolidayService.preloadMonth(now.year, now.month);
     await HolidayService.checkAndPreloadNextMonth();
 
-    // 启动定时器，每分钟检查一次
-    _timer = Timer.periodic(const Duration(minutes: 1), (_) => _check());
-    print('[ReminderService] 定时器已启动，每分钟检查一次');
+    // 启动定时任务，每分钟检查一次（**:00 秒触发）
+    _cron.schedule(Schedule.parse('*/1 * * * *'), () async {
+      await _check();
+    });
+    print('[ReminderService] Cron调度器已启动，每分钟对齐检查');
 
     _initialized = true;
   }
 
   /// 停止服务
   static void dispose() {
-    _timer?.cancel();
-    _timer = null;
+    _cron.close();
     _initialized = false;
   }
 
@@ -77,7 +79,7 @@ class ReminderService {
   static Future<void> _check() async {
     final now = DateTime.now();
     final currentTime = TimeOfDay(hour: now.hour, minute: now.minute);
-    print('[ReminderService] 检查提醒 - 当前时间: ${now.hour}:${now.minute}');
+    // print('[ReminderService] 检查提醒 - 当前时间: ${now.hour}:${now.minute}');
 
     for (final note in StickyNoteService.notes) {
       if (note.reminder == null || !note.reminder!.enabled) continue;
