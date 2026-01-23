@@ -71,22 +71,36 @@ class HolidayService {
 
     try {
       final url = '$_baseUrl?year=$year&month=$monthKey&cn=1';
+      print('[HolidayService] 请求 URL: $url');
+
       final response = await http
           .get(Uri.parse(url))
           .timeout(const Duration(seconds: 10));
 
+      print('[HolidayService] 响应状态码: ${response.statusCode}');
+
       if (response.statusCode != 200) {
+        print('[HolidayService] HTTP 错误: ${response.statusCode}');
         _apiFailed = true;
         return false;
       }
 
+      print(
+        '[HolidayService] 响应内容: ${response.body.substring(0, response.body.length > 200 ? 200 : response.body.length)}...',
+      );
+
       final Map<String, dynamic> data = jsonDecode(response.body);
       if (data['code'] != 0) {
+        print(
+          '[HolidayService] API 返回错误 code: ${data['code']}, msg: ${data['msg']}',
+        );
         _apiFailed = true;
         return false;
       }
 
       final list = data['data']['list'] as List<dynamic>;
+      print('[HolidayService] 获取到 ${list.length} 条数据');
+
       final Map<int, bool> workdayMap = {};
 
       for (final item in list) {
@@ -105,10 +119,12 @@ class HolidayService {
         jsonEncode(workdayMap.map((k, v) => MapEntry(k.toString(), v))),
       );
 
+      print('[HolidayService] 成功缓存 $monthKey 数据');
       _apiFailed = false;
       return true;
-    } catch (e) {
-      print('获取节假日数据失败: $e');
+    } catch (e, stackTrace) {
+      print('[HolidayService] 获取节假日数据失败: $e');
+      print('[HolidayService] 堆栈: $stackTrace');
       _apiFailed = true;
       return false;
     }

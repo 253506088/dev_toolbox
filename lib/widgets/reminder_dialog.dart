@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import '../models/sticky_note.dart';
 import '../models/sticky_note_reminder.dart';
 
 /// 提醒设置弹窗
@@ -216,6 +215,17 @@ class _ReminderDialogState extends State<ReminderDialog> {
   }
 
   void _save() {
+    // 检测是否修改了关键配置（时间、日期、类型）
+    final old = widget.initialReminder;
+    bool configChanged =
+        old == null ||
+        old.type != _type ||
+        old.time.hour != _time.hour ||
+        old.time.minute != _time.minute ||
+        old.onceDate != _onceDate ||
+        old.startDate != _startDate ||
+        old.endDate != _endDate;
+
     final reminder = StickyNoteReminder(
       type: _type,
       time: _time,
@@ -223,7 +233,8 @@ class _ReminderDialogState extends State<ReminderDialog> {
       startDate: _type == ReminderType.dateRange ? _startDate : null,
       endDate: _type == ReminderType.dateRange ? _endDate : null,
       enabled: _enabled,
-      lastTriggered: widget.initialReminder?.lastTriggered,
+      // 如果配置变了，清除 lastTriggered，允许再次触发
+      lastTriggered: configChanged ? null : old?.lastTriggered,
     );
     Navigator.of(context).pop(reminder);
   }
