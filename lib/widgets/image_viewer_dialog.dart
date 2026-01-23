@@ -79,7 +79,7 @@ class _ImageViewerDialogState extends State<ImageViewerDialog> {
   @override
   Widget build(BuildContext context) {
     return Dialog(
-      backgroundColor: Colors.black,
+      backgroundColor: Colors.black.withOpacity(0.3),
       insetPadding: EdgeInsets.zero,
       child: RawKeyboardListener(
         focusNode: _focusNode,
