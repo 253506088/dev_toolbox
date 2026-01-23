@@ -90,6 +90,10 @@ class _MainWindowState extends State<MainWindow> {
                     label: Text('SQL格式化'),
                   ),
                   NavigationRailDestination(
+                    icon: Icon(Icons.compare_arrows),
+                    label: Text('Diff'),
+                  ),
+                  NavigationRailDestination(
                     icon: Icon(Icons.data_object),
                     label: Text('JSON'),
                   ),
@@ -120,10 +124,6 @@ class _MainWindowState extends State<MainWindow> {
                   NavigationRailDestination(
                     icon: Icon(Icons.transform),
                     label: Text('XML/JSON'),
-                  ),
-                  NavigationRailDestination(
-                    icon: Icon(Icons.compare_arrows),
-                    label: Text('Diff'),
                   ),
                 ],
                 trailing: Padding(
