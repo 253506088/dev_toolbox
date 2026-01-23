@@ -213,6 +213,17 @@ class ReminderService {
   /// 显示系统通知
   static Future<void> _showSystemNotification(StickyNote note) async {
     try {
+      String? imagePath;
+      if (note.imagePaths.isNotEmpty) {
+        // 获取第一张图片的绝对路径
+        final file = await StickyNoteService.getImageFile(
+          note.imagePaths.first,
+        );
+        if (await file.exists()) {
+          imagePath = file.absolute.path;
+        }
+      }
+
       final notification = LocalNotification(
         title: '便签提醒',
         body: note.content.length > 100
@@ -248,6 +259,31 @@ class ReminderService {
                 ),
                 child: Text(note.content, style: const TextStyle(fontSize: 16)),
               ),
+
+              // 暂时只显示第一张图
+              if (note.imagePaths.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8.0),
+                  child: FutureBuilder<File>(
+                    future: StickyNoteService.getImageFile(
+                      note.imagePaths.first,
+                    ),
+                    builder: (context, snapshot) {
+                      if (!snapshot.hasData) return const SizedBox.shrink();
+                      return ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(
+                            maxHeight: 200,
+                            maxWidth: 400,
+                          ),
+                          child: Image.file(snapshot.data!, fit: BoxFit.cover),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+
               const SizedBox(height: 8),
               Text(
                 '提醒时间: ${note.reminder!.shortDescription}',
