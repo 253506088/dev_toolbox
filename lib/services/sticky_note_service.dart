@@ -73,6 +73,19 @@ class StickyNoteService {
   static Future<void> update(StickyNote note) async {
     final index = _notes.indexWhere((n) => n.id == note.id);
     if (index != -1) {
+      // 获取旧的便签
+      final oldNote = _notes[index];
+
+      // 找出被移除的图片
+      final imagesToDelete = oldNote.imagePaths
+          .where((path) => !note.imagePaths.contains(path))
+          .toList();
+
+      // 删除本地文件
+      if (imagesToDelete.isNotEmpty) {
+        await _deleteImages(imagesToDelete);
+      }
+
       _notes[index] = note.copyWith(updatedAt: DateTime.now());
       await _save();
     }
