@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:file_selector/file_selector.dart';
 import 'package:desktop_drop/desktop_drop.dart';
@@ -7,6 +8,7 @@ import 'package:pasteboard/pasteboard.dart';
 import 'package:image/image.dart' as img;
 import 'dart:io';
 import 'dart:typed_data';
+import 'dart:ui' as ui;
 
 class QrTool extends StatefulWidget {
   const QrTool({super.key});
@@ -18,12 +20,99 @@ class QrTool extends StatefulWidget {
 class _QrToolState extends State<QrTool> {
   final TextEditingController _inputController = TextEditingController();
   final TextEditingController _decodedController = TextEditingController();
+  final GlobalKey _qrKey = GlobalKey(); // 用于捕获二维码图片
   String _qrData = "";
 
   void _generateQr() {
     setState(() {
       _qrData = _inputController.text;
     });
+  }
+
+  // 清空输入和二维码
+  void _clearQr() {
+    setState(() {
+      _inputController.clear();
+      _qrData = "";
+    });
+  }
+
+  // 捕获二维码图片的字节数据
+  Future<Uint8List?> _captureQrImage() async {
+    try {
+      final boundary =
+          _qrKey.currentContext?.findRenderObject() as RenderRepaintBoundary?;
+      if (boundary == null) {
+        return null;
+      }
+      final image = await boundary.toImage(pixelRatio: 3.0); // 高分辨率
+      final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+      return byteData?.buffer.asUint8List();
+    } catch (e) {
+      return null;
+    }
+  }
+
+  // 复制二维码到剪贴板
+  Future<void> _copyQrImage() async {
+    if (_qrData.isEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('请先生成二维码')));
+      return;
+    }
+    final bytes = await _captureQrImage();
+    if (bytes != null) {
+      await Pasteboard.writeImage(bytes);
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('二维码已复制到剪贴板')));
+      }
+    } else {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('复制失败')));
+      }
+    }
+  }
+
+  // 保存二维码到文件
+  Future<void> _saveQrImage() async {
+    if (_qrData.isEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('请先生成二维码')));
+      return;
+    }
+    final bytes = await _captureQrImage();
+    if (bytes == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('生成图片失败')));
+      }
+      return;
+    }
+
+    // 使用 file_selector 保存文件
+    final location = await getSaveLocation(
+      suggestedName: 'qrcode.png',
+      acceptedTypeGroups: [
+        const XTypeGroup(label: 'PNG Image', extensions: ['png']),
+      ],
+    );
+
+    if (location != null) {
+      final file = File(location.path);
+      await file.writeAsBytes(bytes);
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('已保存到: ${location.path}')));
+      }
+    }
   }
 
   Future<void> _pickImage() async {
@@ -148,13 +237,38 @@ class _QrToolState extends State<QrTool> {
                       child: Center(
                         child: _qrData.isEmpty
                             ? const Text("输入文本以生成")
-                            : QrImageView(
-                                data: _qrData,
-                                version: QrVersions.auto,
-                                size: 200.0,
-                                backgroundColor: Colors.white,
+                            : RepaintBoundary(
+                                key: _qrKey,
+                                child: QrImageView(
+                                  data: _qrData,
+                                  version: QrVersions.auto,
+                                  size: 200.0,
+                                  backgroundColor: Colors.white,
+                                ),
                               ),
                       ),
+                    ),
+                    const SizedBox(height: 16),
+                    // 操作按钮行
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      children: [
+                        ElevatedButton.icon(
+                          onPressed: _clearQr,
+                          icon: const Icon(Icons.clear),
+                          label: const Text("清空"),
+                        ),
+                        ElevatedButton.icon(
+                          onPressed: _qrData.isEmpty ? null : _copyQrImage,
+                          icon: const Icon(Icons.copy),
+                          label: const Text("复制"),
+                        ),
+                        ElevatedButton.icon(
+                          onPressed: _qrData.isEmpty ? null : _saveQrImage,
+                          icon: const Icon(Icons.save),
+                          label: const Text("保存"),
+                        ),
+                      ],
                     ),
                   ],
                 ),
