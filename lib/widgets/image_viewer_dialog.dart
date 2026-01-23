@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/gestures.dart';
+import 'package:pasteboard/pasteboard.dart';
 import '../services/sticky_note_service.dart';
 
 /// 图片查看弹窗
@@ -145,6 +146,61 @@ class _ImageViewerDialogState extends State<ImageViewerDialog> {
     });
   }
 
+  Future<void> _copyImage(File imageFile) async {
+    try {
+      final bytes = await imageFile.readAsBytes();
+      await Pasteboard.writeImage(bytes);
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('图片已复制到剪贴板')));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('复制失败: $e')));
+      }
+    }
+  }
+
+  void _showContextMenu(
+    BuildContext context,
+    TapDownDetails details,
+    File imageFile,
+  ) {
+    final RenderBox overlay =
+        Overlay.of(context).context.findRenderObject() as RenderBox;
+
+    showMenu(
+      context: context,
+      position: RelativeRect.fromRect(
+        details.globalPosition & Size.zero,
+        Offset.zero & overlay.size,
+      ),
+      items: [
+        PopupMenuItem(
+          child: const Row(
+            children: [
+              Icon(Icons.copy, size: 20),
+              SizedBox(width: 8),
+              Text('复制图片'),
+            ],
+          ),
+          onTap: () {
+            // Close menu first? showMenu already handles passing value,
+            // but onTap doesn't expect return.
+            // We can just execute logic.
+            Future.delayed(
+              const Duration(milliseconds: 100),
+              () => _copyImage(imageFile),
+            );
+          },
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Dialog(
@@ -218,17 +274,26 @@ class _ImageViewerDialogState extends State<ImageViewerDialog> {
                           child: imageWidget,
                         );
 
-                        return InteractiveViewer(
-                          transformationController: _transformationController,
-                          minScale: 0.1,
-                          maxScale: 5.0,
-                          // 关键修改：只有按住 Ctrl 才开启缩放，且只有放大后且没按 Ctrl 时才开启平移？
-                          // 不，缩放需要 scaleEnabled。panEnabled 则需要放大后。
-                          // 如果不按 Ctrl，scaleEnabled = false，滚轮就不会缩放。
-                          scaleEnabled: _isCtrlPressed,
-                          panEnabled: _currentScale > 1.001,
-                          boundaryMargin: const EdgeInsets.all(double.infinity),
-                          child: imageWidget,
+                        return GestureDetector(
+                          onSecondaryTapDown: (details) => _showContextMenu(
+                            context,
+                            details,
+                            snapshot.data!,
+                          ),
+                          child: InteractiveViewer(
+                            transformationController: _transformationController,
+                            minScale: 0.1,
+                            maxScale: 5.0,
+                            // 关键修改：只有按住 Ctrl 才开启缩放，且只有放大后且没按 Ctrl 时才开启平移？
+                            // 不，缩放需要 scaleEnabled。panEnabled 则需要放大后。
+                            // 如果不按 Ctrl，scaleEnabled = false，滚轮就不会缩放。
+                            scaleEnabled: _isCtrlPressed,
+                            panEnabled: _currentScale > 1.001,
+                            boundaryMargin: const EdgeInsets.all(
+                              double.infinity,
+                            ),
+                            child: imageWidget,
+                          ),
                         );
                       } else {
                         return imageWidget;
