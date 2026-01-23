@@ -25,6 +25,7 @@ class _StickyNoteToolState extends State<StickyNoteTool> {
   bool _loading = true;
   bool _apiWarningShown = false;
   final ScrollController _scrollController = ScrollController();
+  final FocusNode _focusNode = FocusNode();
 
   @override
   void initState() {
@@ -58,6 +59,8 @@ class _StickyNoteToolState extends State<StickyNoteTool> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         ReminderService.setContext(context);
+        // 尝试自动获取焦点
+        _focusNode.requestFocus();
       }
     });
   }
@@ -65,6 +68,7 @@ class _StickyNoteToolState extends State<StickyNoteTool> {
   @override
   void dispose() {
     _scrollController.dispose();
+    _focusNode.dispose();
     ReminderService.removeListener(_onReminderTriggered);
     super.dispose();
   }
@@ -117,18 +121,42 @@ class _StickyNoteToolState extends State<StickyNoteTool> {
           Expanded(
             child: notes.isEmpty
                 ? _buildEmptyState()
-                : Focus(
-                    autofocus: true,
-                    child: CallbackShortcuts(
-                      bindings: {
-                        const SingleActivator(LogicalKeyboardKey.home):
-                            _scrollToTop,
-                        const SingleActivator(LogicalKeyboardKey.end):
-                            _scrollToBottom,
-                        const SingleActivator(LogicalKeyboardKey.pageUp):
-                            _scrollPageUp,
-                        const SingleActivator(LogicalKeyboardKey.pageDown):
-                            _scrollPageDown,
+                : GestureDetector(
+                    behavior: HitTestBehavior.opaque, // 确保能捕获点击
+                    onTap: () {
+                      print(
+                        'DEBUG: GestureDetector tapped, requesting focus. Current focus: ${_focusNode.hasFocus}',
+                      );
+                      _focusNode.requestFocus();
+                    },
+                    child: Focus(
+                      focusNode: _focusNode,
+                      autofocus: true,
+                      onFocusChange: (value) =>
+                          print('DEBUG: Focus state changed: $value'),
+                      onKeyEvent: (node, event) {
+                        if (event is KeyDownEvent) {
+                          print(
+                            'DEBUG: Key down: ${event.logicalKey.keyLabel} (${event.logicalKey.keyId})',
+                          );
+                          if (event.logicalKey == LogicalKeyboardKey.home) {
+                            _scrollToTop();
+                            return KeyEventResult.handled;
+                          } else if (event.logicalKey ==
+                              LogicalKeyboardKey.end) {
+                            _scrollToBottom();
+                            return KeyEventResult.handled;
+                          } else if (event.logicalKey ==
+                              LogicalKeyboardKey.pageUp) {
+                            _scrollPageUp();
+                            return KeyEventResult.handled;
+                          } else if (event.logicalKey ==
+                              LogicalKeyboardKey.pageDown) {
+                            _scrollPageDown();
+                            return KeyEventResult.handled;
+                          }
+                        }
+                        return KeyEventResult.ignored;
                       },
                       child: MasonryGridView.count(
                         controller: _scrollController,
