@@ -223,7 +223,34 @@ class _StickyNoteToolState extends State<StickyNoteTool> {
           builder: (context, setState) {
             // 处理粘贴
             Future<void> handlePaste() async {
+              print('DEBUG: Handling paste...');
+              // 优先检查文件（支持 GIF）
+              final files = await Pasteboard.files();
+              print('DEBUG: Pasteboard files: $files');
+
+              if (files.isNotEmpty) {
+                for (final path in files) {
+                  final file = File(path);
+                  if (await file.exists()) {
+                    print('DEBUG: Processing file: $path');
+                    final bytes = await file.readAsBytes();
+                    // 这里不需要严格检查是不是图片，saveImage 那边的检测只是为了优化扩展名
+                    // 但为了避免保存非图片，可以简单判断一下扩展名或者直接交给 saveImage
+                    // 假设用户只会复制图片文件
+                    final fileName = await StickyNoteService.saveImage(bytes);
+                    print('DEBUG: Saved image: $fileName');
+                    setState(() {
+                      currentImagePaths.add(fileName);
+                    });
+                  }
+                }
+                return;
+              }
+
+              print('DEBUG: No files found, checking image data...');
+              // 其次检查剪贴板图片数据（通常是 Bitmap，GIF 会变静态）
               final imageBytes = await Pasteboard.image;
+              print('DEBUG: Image bytes found: ${imageBytes != null}');
               if (imageBytes != null) {
                 final fileName = await StickyNoteService.saveImage(imageBytes);
                 setState(() {

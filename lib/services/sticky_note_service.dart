@@ -137,7 +137,17 @@ class StickyNoteService {
   /// 保存图片到本地
   static Future<String> saveImage(Uint8List bytes) async {
     final dir = await _getImagesDir();
-    final fileName = '${const Uuid().v4()}.png';
+    // 简单的文件头检测
+    String ext = 'png';
+    if (bytes.length > 3) {
+      if (bytes[0] == 0x47 && bytes[1] == 0x49 && bytes[2] == 0x46) {
+        ext = 'gif';
+      } else if (bytes[0] == 0xFF && bytes[1] == 0xD8) {
+        ext = 'jpg';
+      }
+    }
+
+    final fileName = '${const Uuid().v4()}.$ext';
     final file = File('${dir.path}/$fileName');
     await file.writeAsBytes(bytes);
     return fileName;
