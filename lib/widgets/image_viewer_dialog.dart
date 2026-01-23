@@ -1,4 +1,5 @@
 import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/gestures.dart';
@@ -24,18 +25,50 @@ class _ImageViewerDialogState extends State<ImageViewerDialog> {
   late int _currentIndex;
   final FocusNode _focusNode = FocusNode();
 
+  final TransformationController _transformationController =
+      TransformationController();
+
+  // 状态变量
+  int _rotationQuarterTurns = 0;
+  bool _isFlipped = false;
+  double _currentScale = 1.0;
+  bool _isCtrlPressed = false; // 追踪 Ctrl 键状态
+
   @override
   void initState() {
     super.initState();
     _currentIndex = widget.initialIndex;
     _pageController = PageController(initialPage: widget.initialIndex);
+
+    _transformationController.addListener(_onTransformationChange);
   }
 
   @override
   void dispose() {
     _pageController.dispose();
+    _transformationController.removeListener(_onTransformationChange);
+    _transformationController.dispose();
     _focusNode.dispose();
     super.dispose();
+  }
+
+  void _onTransformationChange() {
+    final scale = _transformationController.value.entry(0, 0);
+    if ((scale - _currentScale).abs() > 0.01) {
+      setState(() {
+        _currentScale = scale;
+      });
+    }
+  }
+
+  void _onPageChanged(int index) {
+    setState(() {
+      _currentIndex = index;
+      _rotationQuarterTurns = 0;
+      _isFlipped = false;
+      _transformationController.value = Matrix4.identity();
+      _currentScale = 1.0;
+    });
   }
 
   void _nextPage() {
@@ -57,6 +90,14 @@ class _ImageViewerDialogState extends State<ImageViewerDialog> {
   }
 
   void _handleKeyEvent(RawKeyEvent event) {
+    // 更新 Ctrl 键状态
+    final isCtrl = event.isControlPressed;
+    if (_isCtrlPressed != isCtrl) {
+      setState(() {
+        _isCtrlPressed = isCtrl;
+      });
+    }
+
     if (event is RawKeyDownEvent) {
       if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
         _nextPage();
@@ -70,6 +111,8 @@ class _ImageViewerDialogState extends State<ImageViewerDialog> {
 
   void _handleScroll(PointerScrollEvent event) {
     // 如果按住了 Ctrl 键，则认为是缩放操作，不切换图片
+    // 这里使用 state 中的 _isCtrlPressed 或直接检查 HardwareKeyboard 都可以
+    // 为了保险直接检查 HardwareKeyboard
     if (HardwareKeyboard.instance.logicalKeysPressed.contains(
           LogicalKeyboardKey.controlLeft,
         ) ||
@@ -84,6 +127,22 @@ class _ImageViewerDialogState extends State<ImageViewerDialog> {
     } else if (event.scrollDelta.dy < 0) {
       _previousPage();
     }
+  }
+
+  void _resetZoom() {
+    _transformationController.value = Matrix4.identity();
+  }
+
+  void _rotate() {
+    setState(() {
+      _rotationQuarterTurns = (_rotationQuarterTurns + 1) % 4;
+    });
+  }
+
+  void _flip() {
+    setState(() {
+      _isFlipped = !_isFlipped;
+    });
   }
 
   @override
@@ -107,48 +166,74 @@ class _ImageViewerDialogState extends State<ImageViewerDialog> {
               PageView.builder(
                 controller: _pageController,
                 itemCount: widget.imagePaths.length,
-                onPageChanged: (index) {
-                  setState(() {
-                    _currentIndex = index;
-                  });
-                },
+                onPageChanged: _onPageChanged,
+                physics: const NeverScrollableScrollPhysics(),
                 itemBuilder: (context, index) {
-                  return InteractiveViewer(
-                    minScale: 0.5,
-                    maxScale: 4.0,
-                    child: Center(
-                      child: FutureBuilder<File>(
-                        future: StickyNoteService.getImageFile(
-                          widget.imagePaths[index],
-                        ),
-                        builder: (context, snapshot) {
-                          if (!snapshot.hasData) {
-                            return const CircularProgressIndicator(
-                              color: Colors.white,
-                            );
-                          }
-                          return Image.file(
-                            snapshot.data!,
-                            fit: BoxFit.contain,
-                            errorBuilder: (_, __, ___) => const Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(
-                                  Icons.broken_image,
-                                  color: Colors.white,
-                                  size: 64,
-                                ),
-                                SizedBox(height: 16),
-                                Text(
-                                  '图片加载失败',
-                                  style: TextStyle(color: Colors.white),
-                                ),
-                              ],
-                            ),
-                          );
-                        },
-                      ),
+                  final isCurrent = index == _currentIndex;
+
+                  return FutureBuilder<File>(
+                    future: StickyNoteService.getImageFile(
+                      widget.imagePaths[index],
                     ),
+                    builder: (context, snapshot) {
+                      if (!snapshot.hasData) {
+                        return const Center(
+                          child: CircularProgressIndicator(color: Colors.white),
+                        );
+                      }
+
+                      Widget imageWidget = Image.file(
+                        snapshot.data!,
+                        fit: BoxFit.contain,
+                        errorBuilder: (_, __, ___) => const Center(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.broken_image,
+                                color: Colors.white,
+                                size: 64,
+                              ),
+                              Text(
+                                '加载失败',
+                                style: TextStyle(color: Colors.white),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+
+                      if (isCurrent) {
+                        if (_isFlipped) {
+                          imageWidget = Transform(
+                            alignment: Alignment.center,
+                            transform: Matrix4.identity()
+                              ..scale(-1.0, 1.0, 1.0),
+                            child: imageWidget,
+                          );
+                        }
+
+                        imageWidget = RotatedBox(
+                          quarterTurns: _rotationQuarterTurns,
+                          child: imageWidget,
+                        );
+
+                        return InteractiveViewer(
+                          transformationController: _transformationController,
+                          minScale: 0.1,
+                          maxScale: 5.0,
+                          // 关键修改：只有按住 Ctrl 才开启缩放，且只有放大后且没按 Ctrl 时才开启平移？
+                          // 不，缩放需要 scaleEnabled。panEnabled 则需要放大后。
+                          // 如果不按 Ctrl，scaleEnabled = false，滚轮就不会缩放。
+                          scaleEnabled: _isCtrlPressed,
+                          panEnabled: _currentScale > 1.001,
+                          boundaryMargin: const EdgeInsets.all(double.infinity),
+                          child: imageWidget,
+                        );
+                      } else {
+                        return imageWidget;
+                      }
+                    },
                   );
                 },
               ),
@@ -164,30 +249,85 @@ class _ImageViewerDialogState extends State<ImageViewerDialog> {
                 ),
               ),
 
-              // 底部指示器
+              // 底部工具栏
               Positioned(
                 bottom: 20,
                 left: 0,
                 right: 0,
-                child: Center(
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 8,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.black54,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(
+                        '${_currentIndex + 1} / ${widget.imagePaths.length}',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 14,
+                        ),
+                      ),
                     ),
-                    decoration: BoxDecoration(
-                      color: Colors.black54,
-                      borderRadius: BorderRadius.circular(20),
+                    const SizedBox(height: 12),
+
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Colors.black87,
+                        borderRadius: BorderRadius.circular(32),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          SizedBox(
+                            width: 60,
+                            child: Text(
+                              '${(_currentScale * 100).toInt()}%',
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+
+                          IconButton(
+                            icon: const Icon(
+                              Icons.refresh,
+                              color: Colors.white,
+                            ),
+                            tooltip: '恢复原大小',
+                            onPressed: _resetZoom,
+                          ),
+
+                          IconButton(
+                            icon: const Icon(
+                              Icons.rotate_right,
+                              color: Colors.white,
+                            ),
+                            tooltip: '旋转 90°',
+                            onPressed: _rotate,
+                          ),
+
+                          IconButton(
+                            icon: const Icon(Icons.flip, color: Colors.white),
+                            tooltip: '镜像翻转',
+                            onPressed: _flip,
+                          ),
+                        ],
+                      ),
                     ),
-                    child: Text(
-                      '${_currentIndex + 1} / ${widget.imagePaths.length}',
-                      style: const TextStyle(color: Colors.white, fontSize: 16),
-                    ),
-                  ),
+                  ],
                 ),
               ),
 
-              // 左右切换按钮（鼠标悬停时显示，或者一直显示但半透明）
+              // 左右切换按钮
               if (_currentIndex > 0)
                 Positioned(
                   left: 20,
