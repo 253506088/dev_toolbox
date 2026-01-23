@@ -148,8 +148,18 @@ class _ImageViewerDialogState extends State<ImageViewerDialog> {
 
   Future<void> _copyImage(File imageFile) async {
     try {
-      final bytes = await imageFile.readAsBytes();
-      await Pasteboard.writeImage(bytes);
+      final path = imageFile.path;
+      final isGif = path.toLowerCase().endsWith('.gif');
+
+      if (isGif) {
+        // GIF 使用文件复制以保留动画
+        await Pasteboard.writeFiles([path]);
+      } else {
+        // 其他图片使用位图复制，兼容性更好
+        final bytes = await imageFile.readAsBytes();
+        await Pasteboard.writeImage(bytes);
+      }
+
       if (mounted) {
         ScaffoldMessenger.of(
           context,
