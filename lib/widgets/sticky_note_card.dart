@@ -40,15 +40,11 @@ class StickyNoteCard extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               // 内容
-              Expanded(
-                child: Text(
-                  note.content.isEmpty ? '(空便签)' : note.content,
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: note.content.isEmpty ? Colors.grey : Colors.black87,
-                  ),
-                  maxLines: 6,
-                  overflow: TextOverflow.ellipsis,
+              Text(
+                note.content.isEmpty ? '(空便签)' : note.content,
+                style: TextStyle(
+                  fontSize: 14,
+                  color: note.content.isEmpty ? Colors.grey : Colors.black87,
                 ),
               ),
 

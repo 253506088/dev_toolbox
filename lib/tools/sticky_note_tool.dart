@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
 import '../models/sticky_note.dart';
 import '../models/sticky_note_reminder.dart';
 import '../services/sticky_note_service.dart';
@@ -102,14 +103,10 @@ class _StickyNoteToolState extends State<StickyNoteTool> {
           Expanded(
             child: notes.isEmpty
                 ? _buildEmptyState()
-                : GridView.builder(
-                    gridDelegate:
-                        const SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: 3,
-                          childAspectRatio: 1.2,
-                          crossAxisSpacing: 12,
-                          mainAxisSpacing: 12,
-                        ),
+                : MasonryGridView.count(
+                    crossAxisCount: 3,
+                    mainAxisSpacing: 12,
+                    crossAxisSpacing: 12,
                     itemCount: notes.length,
                     itemBuilder: (context, index) {
                       final note = notes[index];

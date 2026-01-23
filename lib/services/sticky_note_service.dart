@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
 import 'package:path_provider/path_provider.dart';
 import '../models/sticky_note.dart';
 
@@ -8,6 +9,18 @@ class StickyNoteService {
   static const _fileName = 'sticky_notes.json';
   static List<StickyNote> _notes = [];
   static bool _initialized = false;
+
+  // 莫兰迪/粉蜡笔色系
+  static const List<String> _colors = [
+    '#FFF59D', // 浅黄 (默认)
+    '#E1BEE7', // 浅紫
+    '#FFCCBC', // 浅红/橙
+    '#C8E6C9', // 浅绿
+    '#B3E5FC', // 浅蓝
+    '#F8BBD0', // 浅粉
+    '#D7CCC8', // 浅褐
+    '#CFD8DC', // 浅灰蓝
+  ];
 
   /// 获取所有便签
   static List<StickyNote> get notes => List.unmodifiable(_notes);
@@ -21,7 +34,8 @@ class StickyNoteService {
 
   /// 添加便签
   static Future<StickyNote> add(String content, {String? color}) async {
-    final note = StickyNote(content: content, color: color ?? '#FFF59D');
+    final randomColor = _colors[Random().nextInt(_colors.length)];
+    final note = StickyNote(content: content, color: color ?? randomColor);
     _notes.insert(0, note); // 最新的在前面
     await _save();
     return note;
