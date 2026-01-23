@@ -26,6 +26,8 @@ class _StickyNoteToolState extends State<StickyNoteTool> {
   bool _apiWarningShown = false;
   final ScrollController _scrollController = ScrollController();
   final FocusNode _focusNode = FocusNode();
+  final TextEditingController _searchController = TextEditingController();
+  String _searchKeyword = '';
 
   @override
   void initState() {
@@ -69,6 +71,7 @@ class _StickyNoteToolState extends State<StickyNoteTool> {
   void dispose() {
     _scrollController.dispose();
     _focusNode.dispose();
+    _searchController.dispose();
     ReminderService.removeListener(_onReminderTriggered);
     super.dispose();
   }
@@ -84,7 +87,16 @@ class _StickyNoteToolState extends State<StickyNoteTool> {
       return const Center(child: CircularProgressIndicator());
     }
 
-    final notes = StickyNoteService.notes;
+    final allNotes = StickyNoteService.notes;
+    final notes = _searchKeyword.isEmpty
+        ? allNotes
+        : allNotes
+              .where(
+                (note) => note.content.toLowerCase().contains(
+                  _searchKeyword.toLowerCase(),
+                ),
+              )
+              .toList();
 
     return Padding(
       padding: const EdgeInsets.all(16),
@@ -101,6 +113,42 @@ class _StickyNoteToolState extends State<StickyNoteTool> {
                 style: TextStyle(color: Colors.grey[600]),
               ),
               const Spacer(),
+              // 搜索框
+              SizedBox(
+                width: 250,
+                child: TextField(
+                  controller: _searchController,
+                  decoration: InputDecoration(
+                    hintText: '搜索便签...',
+                    prefixIcon: const Icon(Icons.search),
+                    suffixIcon: _searchKeyword.isNotEmpty
+                        ? IconButton(
+                            icon: const Icon(Icons.clear, size: 18),
+                            onPressed: () {
+                              _searchController.clear();
+                              setState(() {
+                                _searchKeyword = '';
+                              });
+                            },
+                          )
+                        : null,
+                    isDense: true,
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8,
+                    ),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                  onChanged: (value) {
+                    setState(() {
+                      _searchKeyword = value;
+                    });
+                  },
+                ),
+              ),
+              const SizedBox(width: 16),
               TextButton.icon(
                 onPressed: _confirmClearAll,
                 icon: const Icon(Icons.delete_sweep, size: 20),
