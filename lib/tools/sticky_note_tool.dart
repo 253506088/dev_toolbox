@@ -10,6 +10,7 @@ import '../services/reminder_service.dart';
 import '../services/holiday_service.dart';
 import '../widgets/sticky_note_card.dart';
 import '../widgets/reminder_dialog.dart';
+import '../widgets/image_viewer_dialog.dart';
 
 /// 便签工具主界面
 class StickyNoteTool extends StatefulWidget {
@@ -288,11 +289,23 @@ class _StickyNoteToolState extends State<StickyNoteTool> {
                                   children: [
                                     ClipRRect(
                                       borderRadius: BorderRadius.circular(8),
-                                      child: Image.file(
-                                        snapshot.data!,
-                                        width: 100,
-                                        height: 100,
-                                        fit: BoxFit.cover,
+                                      child: InkWell(
+                                        onTap: () {
+                                          showDialog(
+                                            context: context,
+                                            builder: (context) =>
+                                                ImageViewerDialog(
+                                                  imagePaths: currentImagePaths,
+                                                  initialIndex: index,
+                                                ),
+                                          );
+                                        },
+                                        child: Image.file(
+                                          snapshot.data!,
+                                          width: 100,
+                                          height: 100,
+                                          fit: BoxFit.cover,
+                                        ),
                                       ),
                                     ),
                                     Positioned(

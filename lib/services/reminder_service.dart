@@ -8,6 +8,7 @@ import '../models/sticky_note.dart';
 import '../models/sticky_note_reminder.dart';
 import 'sticky_note_service.dart';
 import 'holiday_service.dart';
+import '../widgets/image_viewer_dialog.dart';
 
 /// 提醒服务 - 定时检查并触发提醒
 class ReminderService {
@@ -272,12 +273,29 @@ class ReminderService {
                       if (!snapshot.hasData) return const SizedBox.shrink();
                       return ClipRRect(
                         borderRadius: BorderRadius.circular(8),
-                        child: ConstrainedBox(
-                          constraints: const BoxConstraints(
-                            maxHeight: 200,
-                            maxWidth: 400,
+                        child: Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            onTap: () {
+                              showDialog(
+                                context: context,
+                                builder: (context) => ImageViewerDialog(
+                                  imagePaths: note.imagePaths,
+                                  initialIndex: 0,
+                                ),
+                              );
+                            },
+                            child: ConstrainedBox(
+                              constraints: const BoxConstraints(
+                                maxHeight: 200,
+                                maxWidth: 400,
+                              ),
+                              child: Image.file(
+                                snapshot.data!,
+                                fit: BoxFit.cover,
+                              ),
+                            ),
                           ),
-                          child: Image.file(snapshot.data!, fit: BoxFit.cover),
                         ),
                       );
                     },
