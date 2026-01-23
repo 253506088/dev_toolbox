@@ -1,5 +1,8 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
+import 'package:pasteboard/pasteboard.dart';
 import '../models/sticky_note.dart';
 import '../models/sticky_note_reminder.dart';
 import '../services/sticky_note_service.dart';
@@ -141,17 +144,23 @@ class _StickyNoteToolState extends State<StickyNoteTool> {
   }
 
   Future<void> _addNote() async {
-    final content = await _showEditDialog(null);
-    if (content != null && content.isNotEmpty) {
-      await StickyNoteService.add(content);
+    final result = await _showEditDialog(null, null);
+    if (result != null &&
+        (result.content.isNotEmpty || result.imagePaths.isNotEmpty)) {
+      await StickyNoteService.add(
+        result.content,
+        imagePaths: result.imagePaths,
+      );
       setState(() {});
     }
   }
 
   Future<void> _editNote(StickyNote note) async {
-    final content = await _showEditDialog(note.content);
-    if (content != null) {
-      await StickyNoteService.update(note.copyWith(content: content));
+    final result = await _showEditDialog(note.content, note.imagePaths);
+    if (result != null) {
+      await StickyNoteService.update(
+        note.copyWith(content: result.content, imagePaths: result.imagePaths),
+      );
       setState(() {});
     }
   }
@@ -198,39 +207,148 @@ class _StickyNoteToolState extends State<StickyNoteTool> {
     }
   }
 
-  Future<String?> _showEditDialog(String? initialContent) async {
+  Future<({String content, List<String> imagePaths})?> _showEditDialog(
+    String? initialContent,
+    List<String>? initialImagePaths,
+  ) async {
     final controller = TextEditingController(text: initialContent ?? '');
-
-    return showDialog<String>(
+    // 使用 StatefulBuilder 管理弹窗内的状态（图片列表）
+    return showDialog<({String content, List<String> imagePaths})>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Text(initialContent == null ? '新建便签' : '编辑便签'),
-        content: SizedBox(
-          width: 400,
-          height: 200,
-          child: TextField(
-            controller: controller,
-            maxLines: null,
-            expands: true,
-            textAlignVertical: TextAlignVertical.top,
-            decoration: const InputDecoration(
-              hintText: '输入便签内容...',
-              border: OutlineInputBorder(),
-            ),
-            autofocus: true,
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('取消'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.of(context).pop(controller.text),
-            child: const Text('保存'),
-          ),
-        ],
-      ),
+      builder: (context) {
+        List<String> currentImagePaths = List.from(initialImagePaths ?? []);
+
+        return StatefulBuilder(
+          builder: (context, setState) {
+            // 处理粘贴
+            Future<void> handlePaste() async {
+              final imageBytes = await Pasteboard.image;
+              if (imageBytes != null) {
+                final fileName = await StickyNoteService.saveImage(imageBytes);
+                setState(() {
+                  currentImagePaths.add(fileName);
+                });
+              }
+            }
+
+            return AlertDialog(
+              title: Text(initialContent == null ? '新建便签' : '编辑便签'),
+              content: SizedBox(
+                width: 500,
+                // height: 400, // 不固定高度，自适应
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // 输入区域 + 键盘监听
+                    Expanded(
+                      child: CallbackShortcuts(
+                        bindings: {
+                          const SingleActivator(
+                            LogicalKeyboardKey.keyV,
+                            control: true,
+                          ): handlePaste,
+                        },
+                        child: TextField(
+                          controller: controller,
+                          maxLines: null,
+                          expands: true,
+                          textAlignVertical: TextAlignVertical.top,
+                          decoration: const InputDecoration(
+                            hintText: '输入便签内容...\n(按 Ctrl+V 可粘贴截图)',
+                            border: OutlineInputBorder(),
+                          ),
+                          autofocus: true,
+                        ),
+                      ),
+                    ),
+
+                    // 图片预览区域
+                    if (currentImagePaths.isNotEmpty) ...[
+                      const SizedBox(height: 12),
+                      SizedBox(
+                        height: 100,
+                        child: ListView.separated(
+                          scrollDirection: Axis.horizontal,
+                          itemCount: currentImagePaths.length,
+                          separatorBuilder: (_, __) => const SizedBox(width: 8),
+                          itemBuilder: (context, index) {
+                            final path = currentImagePaths[index];
+                            return FutureBuilder<File>(
+                              future: StickyNoteService.getImageFile(path),
+                              builder: (context, snapshot) {
+                                if (!snapshot.hasData)
+                                  return const SizedBox(
+                                    width: 100,
+                                    child: Center(
+                                      child: CircularProgressIndicator(),
+                                    ),
+                                  );
+                                return Stack(
+                                  children: [
+                                    ClipRRect(
+                                      borderRadius: BorderRadius.circular(8),
+                                      child: Image.file(
+                                        snapshot.data!,
+                                        width: 100,
+                                        height: 100,
+                                        fit: BoxFit.cover,
+                                      ),
+                                    ),
+                                    Positioned(
+                                      top: 4,
+                                      right: 4,
+                                      child: InkWell(
+                                        onTap: () {
+                                          setState(() {
+                                            currentImagePaths.removeAt(index);
+                                          });
+                                          // TODO: 考虑是否立即删除临时文件？暂不删除，保存时才确定。
+                                          // 或者如果不保存，这些文件就变成了垃圾。
+                                          // 简单起见，这里只从列表移除。
+                                        },
+                                        child: Container(
+                                          padding: const EdgeInsets.all(2),
+                                          decoration: const BoxDecoration(
+                                            color: Colors.black54,
+                                            shape: BoxShape.circle,
+                                          ),
+                                          child: const Icon(
+                                            Icons.close,
+                                            size: 16,
+                                            color: Colors.white,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                );
+                              },
+                            );
+                          },
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('取消'),
+                ),
+                ElevatedButton(
+                  onPressed: () => Navigator.of(context).pop((
+                    content: controller.text,
+                    imagePaths: currentImagePaths,
+                  )),
+                  child: const Text('保存'),
+                ),
+              ],
+            );
+          },
+        );
+      },
     );
   }
 }

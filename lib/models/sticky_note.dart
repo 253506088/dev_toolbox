@@ -6,6 +6,7 @@ class StickyNote {
   final String id;
   final String content;
   final String color; // 便签颜色代码
+  final List<String> imagePaths; // 图片文件名列表
   final DateTime createdAt;
   final DateTime updatedAt;
   final StickyNoteReminder? reminder;
@@ -14,6 +15,7 @@ class StickyNote {
     String? id,
     required this.content,
     this.color = '#FFF59D', // 默认黄色
+    this.imagePaths = const [],
     DateTime? createdAt,
     DateTime? updatedAt,
     this.reminder,
@@ -25,6 +27,7 @@ class StickyNote {
   StickyNote copyWith({
     String? content,
     String? color,
+    List<String>? imagePaths,
     DateTime? updatedAt,
     StickyNoteReminder? reminder,
     bool clearReminder = false,
@@ -33,6 +36,7 @@ class StickyNote {
       id: id,
       content: content ?? this.content,
       color: color ?? this.color,
+      imagePaths: imagePaths ?? this.imagePaths,
       createdAt: createdAt,
       updatedAt: updatedAt ?? DateTime.now(),
       reminder: clearReminder ? null : (reminder ?? this.reminder),
@@ -45,6 +49,11 @@ class StickyNote {
       id: json['id'] as String,
       content: json['content'] as String,
       color: json['color'] as String? ?? '#FFF59D',
+      imagePaths:
+          (json['imagePaths'] as List<dynamic>?)
+              ?.map((e) => e as String)
+              .toList() ??
+          [],
       createdAt: DateTime.parse(json['createdAt'] as String),
       updatedAt: DateTime.parse(json['updatedAt'] as String),
       reminder: json['reminder'] != null
@@ -61,6 +70,7 @@ class StickyNote {
       'id': id,
       'content': content,
       'color': color,
+      'imagePaths': imagePaths,
       'createdAt': createdAt.toIso8601String(),
       'updatedAt': updatedAt.toIso8601String(),
       'reminder': reminder?.toJson(),

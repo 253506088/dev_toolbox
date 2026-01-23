@@ -1,5 +1,7 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import '../models/sticky_note.dart';
+import '../services/sticky_note_service.dart';
 
 /// 便签卡片组件
 class StickyNoteCard extends StatelessWidget {
@@ -47,6 +49,11 @@ class StickyNoteCard extends StatelessWidget {
                   color: note.content.isEmpty ? Colors.grey : Colors.black87,
                 ),
               ),
+
+              if (note.imagePaths.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                _buildImageGrid(context),
+              ],
 
               const SizedBox(height: 8),
 
@@ -123,6 +130,54 @@ class StickyNoteCard extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildImageGrid(BuildContext context) {
+    if (note.imagePaths.isEmpty) return const SizedBox.shrink();
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final count = note.imagePaths.length;
+        // 简单的网格布局
+        return Wrap(
+          spacing: 4,
+          runSpacing: 4,
+          children: note.imagePaths.map((path) {
+            // 计算图片宽度：单张全宽，多张平分
+            final width = count == 1
+                ? constraints.maxWidth
+                : (constraints.maxWidth - 4) / 2;
+
+            return FutureBuilder<File>(
+              future: StickyNoteService.getImageFile(path),
+              builder: (context, snapshot) {
+                if (!snapshot.hasData) {
+                  return Container(
+                    width: width,
+                    height: width * 0.75, // 4:3 占位
+                    color: Colors.black12,
+                  );
+                }
+                return ClipRRect(
+                  borderRadius: BorderRadius.circular(4),
+                  child: Image.file(
+                    snapshot.data!,
+                    width: width,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) => Container(
+                      width: width,
+                      height: width * 0.75,
+                      color: Colors.grey[300],
+                      child: const Icon(Icons.broken_image, color: Colors.grey),
+                    ),
+                  ),
+                );
+              },
+            );
+          }).toList(),
+        );
+      },
     );
   }
 }

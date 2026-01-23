@@ -1,12 +1,15 @@
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
+import 'dart:typed_data';
 import 'package:path_provider/path_provider.dart';
+import 'package:uuid/uuid.dart';
 import '../models/sticky_note.dart';
 
 /// 便签服务 - CRUD 和持久化
 class StickyNoteService {
   static const _fileName = 'sticky_notes.json';
+  static const _imagesDirName = 'images';
   static List<StickyNote> _notes = [];
   static bool _initialized = false;
 
@@ -41,14 +44,26 @@ class StickyNoteService {
   /// 初始化（加载数据）
   static Future<void> init() async {
     if (_initialized) return;
+
+    // 确保存储目录存在
+    await _getImagesDir();
+
     await _load();
     _initialized = true;
   }
 
   /// 添加便签
-  static Future<StickyNote> add(String content, {String? color}) async {
+  static Future<StickyNote> add(
+    String content, {
+    String? color,
+    List<String>? imagePaths,
+  }) async {
     final randomColor = _colors[Random().nextInt(_colors.length)];
-    final note = StickyNote(content: content, color: color ?? randomColor);
+    final note = StickyNote(
+      content: content,
+      color: color ?? randomColor,
+      imagePaths: imagePaths ?? const [],
+    );
     _notes.insert(0, note); // 最新的在前面
     await _save();
     return note;
@@ -65,8 +80,12 @@ class StickyNoteService {
 
   /// 删除便签
   static Future<void> delete(String id) async {
-    _notes.removeWhere((n) => n.id == id);
-    await _save();
+    final note = getById(id);
+    if (note != null) {
+      await _deleteImages(note.imagePaths);
+      _notes.removeWhere((n) => n.id == id);
+      await _save();
+    }
   }
 
   /// 根据 ID 获取便签
@@ -88,6 +107,8 @@ class StickyNoteService {
   static Future<void> _load() async {
     try {
       final file = await _getFile();
+      print('[StickyNoteService] 数据存储路径: ${file.path}');
+
       if (await file.exists()) {
         final content = await file.readAsString();
         final jsonList = jsonDecode(content) as List<dynamic>;
@@ -107,8 +128,50 @@ class StickyNoteService {
       final file = await _getFile();
       final jsonList = _notes.map((n) => n.toJson()).toList();
       await file.writeAsString(jsonEncode(jsonList));
+      print('[StickyNoteService] 数据已保存至: ${file.path}');
     } catch (e) {
       print('保存便签失败: $e');
+    }
+  }
+
+  /// 保存图片到本地
+  static Future<String> saveImage(Uint8List bytes) async {
+    final dir = await _getImagesDir();
+    final fileName = '${const Uuid().v4()}.png';
+    final file = File('${dir.path}/$fileName');
+    await file.writeAsBytes(bytes);
+    return fileName;
+  }
+
+  /// 获取图片文件
+  static Future<File> getImageFile(String fileName) async {
+    final dir = await _getImagesDir();
+    return File('${dir.path}/$fileName');
+  }
+
+  /// 获取图片存储目录
+  static Future<Directory> _getImagesDir() async {
+    final appDir = await getApplicationSupportDirectory();
+    final dir = Directory('${appDir.path}/$_imagesDirName');
+    if (!await dir.exists()) {
+      await dir.create(recursive: true);
+    }
+    return dir;
+  }
+
+  /// 删除图片列表
+  static Future<void> _deleteImages(List<String> imagePaths) async {
+    if (imagePaths.isEmpty) return;
+    try {
+      final dir = await _getImagesDir();
+      for (final path in imagePaths) {
+        final file = File('${dir.path}/$path');
+        if (await file.exists()) {
+          await file.delete();
+        }
+      }
+    } catch (e) {
+      print('删除图片失败: $e');
     }
   }
 }
