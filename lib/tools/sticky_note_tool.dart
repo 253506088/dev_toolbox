@@ -213,182 +213,215 @@ class _StickyNoteToolState extends State<StickyNoteTool> {
     List<String>? initialImagePaths,
   ) async {
     final controller = TextEditingController(text: initialContent ?? '');
+    // 记录本次会话已添加的图片，用于取消时清理
+    final List<String> tempSessionImages = [];
+
     // 使用 StatefulBuilder 管理弹窗内的状态（图片列表）
-    return showDialog<({String content, List<String> imagePaths})>(
-      context: context,
-      builder: (context) {
-        List<String> currentImagePaths = List.from(initialImagePaths ?? []);
+    final result =
+        await showDialog<({String content, List<String> imagePaths})>(
+          context: context,
+          builder: (context) {
+            List<String> currentImagePaths = List.from(initialImagePaths ?? []);
 
-        return StatefulBuilder(
-          builder: (context, setState) {
-            // 处理粘贴
-            Future<void> handlePaste() async {
-              print('DEBUG: Handling paste...');
-              // 优先检查文件（支持 GIF）
-              final files = await Pasteboard.files();
-              print('DEBUG: Pasteboard files: $files');
+            return StatefulBuilder(
+              builder: (context, setState) {
+                // 处理粘贴
+                Future<void> handlePaste() async {
+                  print('DEBUG: Handling paste...');
+                  // 优先检查文件（支持 GIF）
+                  final files = await Pasteboard.files();
+                  print('DEBUG: Pasteboard files: $files');
 
-              if (files.isNotEmpty) {
-                for (final path in files) {
-                  final file = File(path);
-                  if (await file.exists()) {
-                    print('DEBUG: Processing file: $path');
-                    final bytes = await file.readAsBytes();
-                    // 这里不需要严格检查是不是图片，saveImage 那边的检测只是为了优化扩展名
-                    // 但为了避免保存非图片，可以简单判断一下扩展名或者直接交给 saveImage
-                    // 假设用户只会复制图片文件
-                    final fileName = await StickyNoteService.saveImage(bytes);
-                    print('DEBUG: Saved image: $fileName');
+                  if (files.isNotEmpty) {
+                    for (final path in files) {
+                      final file = File(path);
+                      if (await file.exists()) {
+                        print('DEBUG: Processing file: $path');
+                        final bytes = await file.readAsBytes();
+                        // 这里不需要严格检查是不是图片，saveImage 那边的检测只是为了优化扩展名
+                        // 但为了避免保存非图片，可以简单判断一下扩展名或者直接交给 saveImage
+                        // 假设用户只会复制图片文件
+                        final fileName = await StickyNoteService.saveImage(
+                          bytes,
+                        );
+                        print('DEBUG: Saved image: $fileName');
+                        tempSessionImages.add(fileName); // 记录临时图片
+                        setState(() {
+                          currentImagePaths.add(fileName);
+                        });
+                      }
+                    }
+                    return;
+                  }
+
+                  print('DEBUG: No files found, checking image data...');
+                  // 其次检查剪贴板图片数据（通常是 Bitmap，GIF 会变静态）
+                  final imageBytes = await Pasteboard.image;
+                  print('DEBUG: Image bytes found: ${imageBytes != null}');
+                  if (imageBytes != null) {
+                    final fileName = await StickyNoteService.saveImage(
+                      imageBytes,
+                    );
+                    tempSessionImages.add(fileName); // 记录临时图片
                     setState(() {
                       currentImagePaths.add(fileName);
                     });
                   }
                 }
-                return;
-              }
 
-              print('DEBUG: No files found, checking image data...');
-              // 其次检查剪贴板图片数据（通常是 Bitmap，GIF 会变静态）
-              final imageBytes = await Pasteboard.image;
-              print('DEBUG: Image bytes found: ${imageBytes != null}');
-              if (imageBytes != null) {
-                final fileName = await StickyNoteService.saveImage(imageBytes);
-                setState(() {
-                  currentImagePaths.add(fileName);
-                });
-              }
-            }
-
-            return AlertDialog(
-              title: Text(initialContent == null ? '新建便签' : '编辑便签'),
-              content: SizedBox(
-                width: 500,
-                // height: 400, // 不固定高度，自适应
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // 输入区域 + 键盘监听
-                    Expanded(
-                      child: CallbackShortcuts(
-                        bindings: {
-                          const SingleActivator(
-                            LogicalKeyboardKey.keyV,
-                            control: true,
-                          ): handlePaste,
-                        },
-                        child: TextField(
-                          controller: controller,
-                          maxLines: null,
-                          expands: true,
-                          textAlignVertical: TextAlignVertical.top,
-                          decoration: const InputDecoration(
-                            hintText: '输入便签内容...\n(按 Ctrl+V 可粘贴截图)',
-                            border: OutlineInputBorder(),
+                return AlertDialog(
+                  title: Text(initialContent == null ? '新建便签' : '编辑便签'),
+                  content: SizedBox(
+                    width: 500,
+                    // height: 400, // 不固定高度，自适应
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // 输入区域 + 键盘监听
+                        Expanded(
+                          child: CallbackShortcuts(
+                            bindings: {
+                              const SingleActivator(
+                                LogicalKeyboardKey.keyV,
+                                control: true,
+                              ): handlePaste,
+                            },
+                            child: TextField(
+                              controller: controller,
+                              maxLines: null,
+                              expands: true,
+                              textAlignVertical: TextAlignVertical.top,
+                              decoration: const InputDecoration(
+                                hintText: '输入便签内容...\n(按 Ctrl+V 可粘贴截图)',
+                                border: OutlineInputBorder(),
+                              ),
+                              autofocus: true,
+                            ),
                           ),
-                          autofocus: true,
                         ),
-                      ),
-                    ),
 
-                    // 图片预览区域
-                    if (currentImagePaths.isNotEmpty) ...[
-                      const SizedBox(height: 12),
-                      SizedBox(
-                        height: 100,
-                        child: ListView.separated(
-                          scrollDirection: Axis.horizontal,
-                          itemCount: currentImagePaths.length,
-                          separatorBuilder: (_, __) => const SizedBox(width: 8),
-                          itemBuilder: (context, index) {
-                            final path = currentImagePaths[index];
-                            return FutureBuilder<File>(
-                              future: StickyNoteService.getImageFile(path),
-                              builder: (context, snapshot) {
-                                if (!snapshot.hasData)
-                                  return const SizedBox(
-                                    width: 100,
-                                    child: Center(
-                                      child: CircularProgressIndicator(),
-                                    ),
-                                  );
-                                return Stack(
-                                  children: [
-                                    ClipRRect(
-                                      borderRadius: BorderRadius.circular(8),
-                                      child: InkWell(
-                                        onTap: () {
-                                          showDialog(
-                                            context: context,
-                                            builder: (context) =>
-                                                ImageViewerDialog(
-                                                  imagePaths: currentImagePaths,
-                                                  initialIndex: index,
-                                                ),
-                                          );
-                                        },
-                                        child: Image.file(
-                                          snapshot.data!,
-                                          width: 100,
-                                          height: 100,
-                                          fit: BoxFit.cover,
+                        // 图片预览区域
+                        if (currentImagePaths.isNotEmpty) ...[
+                          const SizedBox(height: 12),
+                          SizedBox(
+                            height: 100,
+                            child: ListView.separated(
+                              scrollDirection: Axis.horizontal,
+                              itemCount: currentImagePaths.length,
+                              separatorBuilder: (_, __) =>
+                                  const SizedBox(width: 8),
+                              itemBuilder: (context, index) {
+                                final path = currentImagePaths[index];
+                                return FutureBuilder<File>(
+                                  future: StickyNoteService.getImageFile(path),
+                                  builder: (context, snapshot) {
+                                    if (!snapshot.hasData)
+                                      return const SizedBox(
+                                        width: 100,
+                                        child: Center(
+                                          child: CircularProgressIndicator(),
                                         ),
-                                      ),
-                                    ),
-                                    Positioned(
-                                      top: 4,
-                                      right: 4,
-                                      child: InkWell(
-                                        onTap: () {
-                                          setState(() {
-                                            currentImagePaths.removeAt(index);
-                                          });
-                                          // TODO: 考虑是否立即删除临时文件？暂不删除，保存时才确定。
-                                          // 或者如果不保存，这些文件就变成了垃圾。
-                                          // 简单起见，这里只从列表移除。
-                                        },
-                                        child: Container(
-                                          padding: const EdgeInsets.all(2),
-                                          decoration: const BoxDecoration(
-                                            color: Colors.black54,
-                                            shape: BoxShape.circle,
+                                      );
+                                    return Stack(
+                                      children: [
+                                        ClipRRect(
+                                          borderRadius: BorderRadius.circular(
+                                            8,
                                           ),
-                                          child: const Icon(
-                                            Icons.close,
-                                            size: 16,
-                                            color: Colors.white,
+                                          child: InkWell(
+                                            onTap: () {
+                                              showDialog(
+                                                context: context,
+                                                builder: (context) =>
+                                                    ImageViewerDialog(
+                                                      imagePaths:
+                                                          currentImagePaths,
+                                                      initialIndex: index,
+                                                    ),
+                                              );
+                                            },
+                                            child: Image.file(
+                                              snapshot.data!,
+                                              width: 100,
+                                              height: 100,
+                                              fit: BoxFit.cover,
+                                            ),
                                           ),
                                         ),
-                                      ),
-                                    ),
-                                  ],
+                                        Positioned(
+                                          top: 4,
+                                          right: 4,
+                                          child: InkWell(
+                                            onTap: () {
+                                              setState(() {
+                                                currentImagePaths.removeAt(
+                                                  index,
+                                                );
+                                              });
+                                              // TODO: 考虑是否立即删除临时文件？暂不删除，保存时才确定。
+                                              // 或者如果不保存，这些文件就变成了垃圾。
+                                              // 简单起见，这里只从列表移除。
+                                            },
+                                            child: Container(
+                                              padding: const EdgeInsets.all(2),
+                                              decoration: const BoxDecoration(
+                                                color: Colors.black54,
+                                                shape: BoxShape.circle,
+                                              ),
+                                              child: const Icon(
+                                                Icons.close,
+                                                size: 16,
+                                                color: Colors.white,
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    );
+                                  },
                                 );
                               },
-                            );
-                          },
-                        ),
-                      ),
-                    ],
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      child: const Text('取消'),
+                    ),
+                    ElevatedButton(
+                      onPressed: () => Navigator.of(context).pop((
+                        content: controller.text,
+                        imagePaths: currentImagePaths,
+                      )),
+                      child: const Text('保存'),
+                    ),
                   ],
-                ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.of(context).pop(),
-                  child: const Text('取消'),
-                ),
-                ElevatedButton(
-                  onPressed: () => Navigator.of(context).pop((
-                    content: controller.text,
-                    imagePaths: currentImagePaths,
-                  )),
-                  child: const Text('保存'),
-                ),
-              ],
+                );
+              },
             );
           },
         );
-      },
-    );
+
+    // 如果取消了操作（result 为 null），则清理本次添加的临时图片
+    if (result == null && tempSessionImages.isNotEmpty) {
+      for (final path in tempSessionImages) {
+        try {
+          final file = await StickyNoteService.getImageFile(path);
+          if (await file.exists()) {
+            await file.delete();
+            print('DEBUG: Deleted orphaned image: $path');
+          }
+        } catch (e) {
+          print('Error deleting orphaned image: $e');
+        }
+      }
+    }
+
+    return result;
   }
 }
