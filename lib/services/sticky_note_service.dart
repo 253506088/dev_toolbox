@@ -101,6 +101,19 @@ class StickyNoteService {
     }
   }
 
+  /// 清空所有便签
+  static Future<void> clearAll() async {
+    // 1. 获取所有图片的路径
+    final allImagePaths = _notes.expand((n) => n.imagePaths).toList();
+
+    // 2. 删除所有图片文件
+    await _deleteImages(allImagePaths);
+
+    // 3. 清空列表并保存
+    _notes.clear();
+    await _save();
+  }
+
   /// 根据 ID 获取便签
   static StickyNote? getById(String id) {
     try {

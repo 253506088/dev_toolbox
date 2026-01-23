@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import '../models/sticky_note.dart';
 import '../services/sticky_note_service.dart';
+import 'package:intl/intl.dart';
 
 /// 便签卡片组件
 class StickyNoteCard extends StatelessWidget {
@@ -60,6 +61,13 @@ class StickyNoteCard extends StatelessWidget {
               // 底部信息栏
               Row(
                 children: [
+                  // 时间戳
+                  Text(
+                    '${DateFormat('yyyy-MM-dd HH:mm:ss').format(note.updatedAt)}', // 展示最后修改时间
+                    style: TextStyle(fontSize: 10, color: Colors.grey[600]),
+                  ),
+                  const Spacer(),
+
                   // 提醒图标
                   if (note.hasActiveReminder)
                     Tooltip(
@@ -106,7 +114,7 @@ class StickyNoteCard extends StatelessWidget {
                       ),
                     ),
 
-                  const Spacer(),
+                  const SizedBox(width: 8),
 
                   // 操作按钮
                   IconButton(
