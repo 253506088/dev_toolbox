@@ -10,6 +10,7 @@ import 'package:dev_toolbox/tools/qr_tool.dart';
 import 'package:dev_toolbox/tools/cron_tool.dart';
 import 'package:dev_toolbox/tools/xml_json_tool.dart';
 import 'package:dev_toolbox/tools/diff_tool.dart';
+import 'package:dev_toolbox/tools/sticky_note_tool.dart';
 
 import 'package:url_launcher/url_launcher.dart';
 
@@ -55,8 +56,8 @@ class _MainWindowState extends State<MainWindow> {
     const CronTool(),
     const XmlJsonTool(),
     const DiffTool(),
+    const StickyNoteTool(),
   ];
-
   Future<void> _launchUrl() async {
     final Uri url = Uri.parse('https://github.com/253506088/dev_toolbox');
     if (!await launchUrl(url)) {
@@ -90,10 +91,6 @@ class _MainWindowState extends State<MainWindow> {
                     label: Text('SQL格式化'),
                   ),
                   NavigationRailDestination(
-                    icon: Icon(Icons.compare_arrows),
-                    label: Text('Diff'),
-                  ),
-                  NavigationRailDestination(
                     icon: Icon(Icons.data_object),
                     label: Text('JSON'),
                   ),
@@ -124,6 +121,14 @@ class _MainWindowState extends State<MainWindow> {
                   NavigationRailDestination(
                     icon: Icon(Icons.transform),
                     label: Text('XML/JSON'),
+                  ),
+                  NavigationRailDestination(
+                    icon: Icon(Icons.compare_arrows),
+                    label: Text('Diff'),
+                  ),
+                  NavigationRailDestination(
+                    icon: Icon(Icons.sticky_note_2),
+                    label: Text('便签'),
                   ),
                 ],
                 trailing: Padding(
