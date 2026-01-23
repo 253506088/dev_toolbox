@@ -69,6 +69,16 @@ class _ImageViewerDialogState extends State<ImageViewerDialog> {
   }
 
   void _handleScroll(PointerScrollEvent event) {
+    // 如果按住了 Ctrl 键，则认为是缩放操作，不切换图片
+    if (HardwareKeyboard.instance.logicalKeysPressed.contains(
+          LogicalKeyboardKey.controlLeft,
+        ) ||
+        HardwareKeyboard.instance.logicalKeysPressed.contains(
+          LogicalKeyboardKey.controlRight,
+        )) {
+      return;
+    }
+
     if (event.scrollDelta.dy > 0) {
       _nextPage();
     } else if (event.scrollDelta.dy < 0) {
