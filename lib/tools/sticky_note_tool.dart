@@ -442,6 +442,42 @@ class _StickyNoteToolState extends State<StickyNoteTool> {
                   currentImagePaths.add(fileName);
                 });
               }
+              // 最后检查文本
+              else {
+                print('DEBUG: checking text data...');
+                final clipboardData = await Clipboard.getData(
+                  Clipboard.kTextPlain,
+                );
+                final text = clipboardData?.text;
+                if (text != null && text.isNotEmpty) {
+                  print('DEBUG: Text found: $text');
+                  final textSelection = controller.selection;
+                  final fullText = controller.text;
+                  if (!textSelection.isValid) {
+                    // 如果没有有效选区，直接追加到末尾
+                    final newText = fullText + text;
+                    controller.value = TextEditingValue(
+                      text: newText,
+                      selection: TextSelection.collapsed(
+                        offset: newText.length,
+                      ),
+                    );
+                  } else {
+                    // 在光标位置插入或替换选中内容
+                    final newText = fullText.replaceRange(
+                      textSelection.start,
+                      textSelection.end,
+                      text,
+                    );
+                    controller.value = TextEditingValue(
+                      text: newText,
+                      selection: TextSelection.collapsed(
+                        offset: textSelection.start + text.length,
+                      ),
+                    );
+                  }
+                }
+              }
             }
 
             return AlertDialog(
