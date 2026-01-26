@@ -45,6 +45,8 @@ class _MainWindowState extends State<MainWindow> {
   int _selectedIndex = 0;
 
   final List<Widget> _tools = [
+    const StickyNoteTool(),
+    const DiffTool(),
     const SqlInFormatterTool(),
     const SqlFormatTool(),
     const JsonFormatterTool(),
@@ -55,8 +57,6 @@ class _MainWindowState extends State<MainWindow> {
     const QrTool(),
     const CronTool(),
     const XmlJsonTool(),
-    const DiffTool(),
-    const StickyNoteTool(),
   ];
   Future<void> _launchUrl() async {
     final Uri url = Uri.parse('https://github.com/253506088/dev_toolbox');
@@ -82,6 +82,14 @@ class _MainWindowState extends State<MainWindow> {
                 labelType: NavigationRailLabelType.all,
                 minWidth: 80,
                 destinations: const <NavigationRailDestination>[
+                  NavigationRailDestination(
+                    icon: Icon(Icons.sticky_note_2),
+                    label: Text('便签'),
+                  ),
+                  NavigationRailDestination(
+                    icon: Icon(Icons.compare_arrows),
+                    label: Text('Diff'),
+                  ),
                   NavigationRailDestination(
                     icon: Icon(Icons.format_list_bulleted),
                     label: Text('SQL IN'),
@@ -121,14 +129,6 @@ class _MainWindowState extends State<MainWindow> {
                   NavigationRailDestination(
                     icon: Icon(Icons.transform),
                     label: Text('XML/JSON'),
-                  ),
-                  NavigationRailDestination(
-                    icon: Icon(Icons.compare_arrows),
-                    label: Text('Diff'),
-                  ),
-                  NavigationRailDestination(
-                    icon: Icon(Icons.sticky_note_2),
-                    label: Text('便签'),
                   ),
                 ],
                 trailing: Padding(
