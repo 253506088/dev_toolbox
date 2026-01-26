@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+
 import 'package:flutter/services.dart';
+import '../widgets/find_bar.dart';
+import '../utils/search_controller.dart';
 
 class SqlFormatTool extends StatefulWidget {
   const SqlFormatTool({super.key});
@@ -9,8 +12,15 @@ class SqlFormatTool extends StatefulWidget {
 }
 
 class _SqlFormatToolState extends State<SqlFormatTool> {
-  final TextEditingController _controller = TextEditingController();
+  final SearchTextEditingController _controller = SearchTextEditingController();
+  final ScrollController _scrollController = ScrollController();
   final FocusNode _focusNode = FocusNode();
+
+  // Search State
+  bool _showFindBar = false;
+  String _searchQuery = '';
+  List<TextRange> _matches = [];
+  int _currentMatchIndex = 0;
 
   static final Set<String> _keywords = {
     'SELECT',
@@ -458,69 +468,212 @@ class _SqlFormatToolState extends State<SqlFormatTool> {
   @override
   void dispose() {
     _controller.dispose();
+    _scrollController.dispose();
     _focusNode.dispose();
     super.dispose();
   }
 
+  void _onSearchChanged(String query) {
+    setState(() {
+      _searchQuery = query;
+      _matches = [];
+      _currentMatchIndex = 0;
+    });
+
+    // Update highlighter
+    _controller.setSearchQuery(query);
+
+    if (query.isEmpty) return;
+    _performSearch();
+  }
+
+  void _performSearch() {
+    _matches = [];
+    String text = _controller.text;
+    if (text.isEmpty) return;
+
+    int index = text.indexOf(_searchQuery);
+    while (index != -1) {
+      _matches.add(TextRange(start: index, end: index + _searchQuery.length));
+      index = text.indexOf(_searchQuery, index + 1);
+    }
+
+    if (_matches.isNotEmpty) {
+      _scrollToMatch(0);
+    }
+  }
+
+  void _onSearchNext() {
+    if (_matches.isEmpty) return;
+    int nextIndex = (_currentMatchIndex + 1) % _matches.length;
+    _scrollToMatch(nextIndex);
+  }
+
+  void _onSearchPrevious() {
+    if (_matches.isEmpty) return;
+    int prevIndex =
+        (_currentMatchIndex - 1 + _matches.length) % _matches.length;
+    _scrollToMatch(prevIndex);
+  }
+
+  void _scrollToMatch(int index) {
+    if (index < 0 || index >= _matches.length) return;
+
+    setState(() {
+      _currentMatchIndex = index;
+    });
+
+    TextRange range = _matches[index];
+    _controller.selection = TextSelection(
+      baseOffset: range.start,
+      extentOffset: range.end,
+    );
+
+    _controller.setCurrentMatchIndex(index);
+    _ensureVisible(range);
+  }
+
+  void _ensureVisible(TextRange range) {
+    // Determine the line number of the match
+    String text = _controller.text;
+    if (text.isEmpty) return;
+
+    // Calculate scroll offset based on line height
+    // Assuming 'Consolas' font with 1.5 height around 14px size
+    // We can use TextPainter to get accurate offset
+
+    TextPainter painter = TextPainter(
+      text: TextSpan(
+        text: text.substring(0, range.start),
+        style: const TextStyle(
+          fontFamily: 'Consolas',
+          fontSize: 14,
+          height: 1.5,
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+    );
+
+    painter.layout(
+      maxWidth: double.infinity,
+    ); // Assuming no wrapping or wide toggle
+    // For multiline text field, layout width depends on constraints, but here it 'expands'.
+    // However, if lines don't wrap (horizontal scroll), width is infinity.
+    // If lines wrap, we need actual width.
+    // Sql Format usually wraps? Or is it horizontal scroll?
+    // TextField defaults: maxLines: null, expands: true.
+    // It wraps unless keyboardType is specifically set or we want it to.
+
+    // Simplest approximation: count newlines before match
+    int lineCount = text.substring(0, range.start).split('\n').length;
+    // Note: split('\n').length is lines count. Index is length - 1.
+    double approximateLineHeight = 14 * 1.5; // fontSize * height
+    double targetOffset = (lineCount - 1) * approximateLineHeight;
+
+    // Scroll to center the line
+    double viewportHeight = _scrollController.position.viewportDimension;
+    double centeredOffset = targetOffset - viewportHeight / 2;
+
+    if (centeredOffset < 0) centeredOffset = 0;
+    if (centeredOffset > _scrollController.position.maxScrollExtent) {
+      centeredOffset = _scrollController.position.maxScrollExtent;
+    }
+
+    _scrollController.animateTo(
+      centeredOffset,
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeInOut,
+    );
+  }
+
+  void _toggleFindBar() {
+    setState(() {
+      _showFindBar = !_showFindBar;
+      if (!_showFindBar) {
+        _searchQuery = '';
+        _matches = [];
+      }
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.all(16.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              ElevatedButton.icon(
-                onPressed: _format,
-                icon: const Icon(Icons.auto_fix_high),
-                label: const Text("格式化"),
-              ),
-              ElevatedButton.icon(
-                onPressed: _compress,
-                icon: const Icon(Icons.compress),
-                label: const Text("压缩"),
-              ),
-              ElevatedButton.icon(
-                onPressed: _copy,
-                icon: const Icon(Icons.copy),
-                label: const Text("复制"),
-              ),
-              ElevatedButton.icon(
-                onPressed: _clear,
-                icon: const Icon(Icons.clear),
-                label: const Text("清空"),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.red[50],
-                  foregroundColor: Colors.red,
+    return CallbackShortcuts(
+      bindings: {
+        const SingleActivator(LogicalKeyboardKey.keyF, control: true):
+            _toggleFindBar,
+      },
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (_showFindBar)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8.0),
+                child: FindBar(
+                  onChanged: _onSearchChanged,
+                  onNext: _onSearchNext,
+                  onPrevious: _onSearchPrevious,
+                  onClose: () => setState(() => _showFindBar = false),
+                  currentMatch: _matches.isEmpty ? 0 : _currentMatchIndex + 1,
+                  totalMatches: _matches.length,
                 ),
               ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          Expanded(
-            child: TextField(
-              controller: _controller,
-              focusNode: _focusNode,
-              maxLines: null,
-              expands: true,
-              textAlignVertical: TextAlignVertical.top,
-              style: const TextStyle(
-                fontFamily: 'Consolas',
-                fontSize: 14,
-                color: Colors.black87,
-                height: 1.5,
-              ),
-              decoration: const InputDecoration(
-                border: OutlineInputBorder(),
-                contentPadding: EdgeInsets.all(12),
-                hintText: '在此输入 SQL 语句...',
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                ElevatedButton.icon(
+                  onPressed: _format,
+                  icon: const Icon(Icons.auto_fix_high),
+                  label: const Text("格式化"),
+                ),
+                ElevatedButton.icon(
+                  onPressed: _compress,
+                  icon: const Icon(Icons.compress),
+                  label: const Text("压缩"),
+                ),
+                ElevatedButton.icon(
+                  onPressed: _copy,
+                  icon: const Icon(Icons.copy),
+                  label: const Text("复制"),
+                ),
+                ElevatedButton.icon(
+                  onPressed: _clear,
+                  icon: const Icon(Icons.clear),
+                  label: const Text("清空"),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.red[50],
+                    foregroundColor: Colors.red,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            Expanded(
+              child: TextField(
+                controller: _controller,
+                scrollController: _scrollController,
+                focusNode: _focusNode,
+                maxLines: null,
+                expands: true,
+                textAlignVertical: TextAlignVertical.top,
+                style: const TextStyle(
+                  fontFamily: 'Consolas',
+                  fontSize: 14,
+                  color: Colors.black87,
+                  height: 1.5,
+                ),
+                decoration: const InputDecoration(
+                  border: OutlineInputBorder(),
+                  contentPadding: EdgeInsets.all(12),
+                  hintText: '在此输入 SQL 语句...',
+                ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

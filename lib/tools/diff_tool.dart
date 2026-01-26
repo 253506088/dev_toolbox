@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+
 import 'package:flutter/services.dart';
 import 'package:diff_match_patch/diff_match_patch.dart';
+import '../widgets/find_bar.dart';
 
 class DiffTool extends StatefulWidget {
   const DiffTool({super.key});
@@ -19,7 +21,21 @@ class _DiffToolState extends State<DiffTool> {
   final ScrollController _leftHorizontalController = ScrollController();
   final ScrollController _rightHorizontalController = ScrollController();
   final ScrollController _navScrollController = ScrollController();
+
   final FocusNode _diffFocusNode = FocusNode();
+  final FocusNode _leftInputFocusNode = FocusNode();
+  final FocusNode _rightInputFocusNode = FocusNode();
+
+  // Search State
+  bool _showFindBar = false;
+  String _searchQuery = '';
+  List<DiffSearchMatch> _diffMatches = [];
+  int _currentDiffMatchIndex = 0;
+
+  // Input Search State
+  List<TextRange> _inputMatches = [];
+  int _currentInputMatchIndex = 0;
+  TextEditingController? _activeSearchController;
 
   List<DiffLine> _leftLines = [];
   List<DiffLine> _rightLines = [];
@@ -48,7 +64,10 @@ class _DiffToolState extends State<DiffTool> {
     _leftHorizontalController.dispose();
     _rightHorizontalController.dispose();
     _navScrollController.dispose();
+
     _diffFocusNode.dispose();
+    _leftInputFocusNode.dispose();
+    _rightInputFocusNode.dispose();
     super.dispose();
   }
 
@@ -380,22 +399,20 @@ class _DiffToolState extends State<DiffTool> {
   }
 
   void _scrollToLine(int lineIndex) {
-    double offset = lineIndex * 24.0; // Approximate line height
-    _syncScroll = false; // Temporarily disable sync to avoid conflicts
-    _leftScrollController.animateTo(
-      offset,
-      duration: const Duration(milliseconds: 300),
-      curve: Curves.easeInOut,
-    );
-    _rightScrollController
-        .animateTo(
-          offset,
-          duration: const Duration(milliseconds: 300),
-          curve: Curves.easeInOut,
-        )
-        .then((_) {
-          _syncScroll = true; // Re-enable sync after animation
-        });
+    double offset = lineIndex * 24.0;
+    _syncScroll = false;
+
+    if (_leftScrollController.hasClients) {
+      _leftScrollController.jumpTo(offset);
+    }
+    if (_rightScrollController.hasClients) {
+      _rightScrollController.jumpTo(offset);
+    }
+
+    // Defer enabling sync slightly to ensure jump is processed
+    Future.microtask(() {
+      _syncScroll = true;
+    });
   }
 
   void _clear() {
@@ -445,150 +462,305 @@ class _DiffToolState extends State<DiffTool> {
     return KeyEventResult.ignored;
   }
 
+  void _onSearchChanged(String query) {
+    setState(() {
+      _searchQuery = query;
+      _diffMatches = [];
+      _inputMatches = [];
+      _currentDiffMatchIndex = 0;
+      _currentInputMatchIndex = 0;
+    });
+
+    if (query.isEmpty) return;
+
+    if (_leftInputFocusNode.hasFocus) {
+      _activeSearchController = _leftController;
+      _searchInInput(_leftController);
+    } else if (_rightInputFocusNode.hasFocus) {
+      _activeSearchController = _rightController;
+      _searchInInput(_rightController);
+    } else {
+      _activeSearchController = null;
+      // Search in Diff Results (Default if no input focused)
+      _searchInDiff();
+    }
+  }
+
+  void _searchInInput(TextEditingController controller) {
+    _inputMatches = [];
+    String text = controller.text;
+    if (text.isEmpty) return;
+
+    int index = text.indexOf(_searchQuery);
+    while (index != -1) {
+      _inputMatches.add(
+        TextRange(start: index, end: index + _searchQuery.length),
+      );
+      index = text.indexOf(_searchQuery, index + 1);
+    }
+
+    if (_inputMatches.isNotEmpty) {
+      _scrollToInputMatch(0);
+    }
+  }
+
+  void _searchInDiff() {
+    _diffMatches = [];
+    // Search in aligned lines
+    // We search both left and right visible text
+    for (int i = 0; i < _leftLines.length; i++) {
+      String leftText = _leftLines[i].text;
+      String rightText = _rightLines[i].text;
+
+      // Simple search: check if query exists in left or right
+      // If found, add as a match point (index)
+      if (leftText.contains(_searchQuery) || rightText.contains(_searchQuery)) {
+        _diffMatches.add(DiffSearchMatch(lineIndex: i));
+      }
+    }
+
+    if (_diffMatches.isNotEmpty) {
+      _scrollToDiffMatch(0);
+    }
+  }
+
+  void _onSearchNext() {
+    if (_activeSearchController != null) {
+      if (_inputMatches.isEmpty) return;
+      int nextIndex = (_currentInputMatchIndex + 1) % _inputMatches.length;
+      _scrollToInputMatch(nextIndex);
+    } else {
+      if (_diffMatches.isEmpty) return;
+      int nextIndex = (_currentDiffMatchIndex + 1) % _diffMatches.length;
+      _scrollToDiffMatch(nextIndex);
+    }
+  }
+
+  void _onSearchPrevious() {
+    if (_activeSearchController != null) {
+      if (_inputMatches.isEmpty) return;
+      int prevIndex =
+          (_currentInputMatchIndex - 1 + _inputMatches.length) %
+          _inputMatches.length;
+      _scrollToInputMatch(prevIndex);
+    } else {
+      if (_diffMatches.isEmpty) return;
+      int prevIndex =
+          (_currentDiffMatchIndex - 1 + _diffMatches.length) %
+          _diffMatches.length;
+      _scrollToDiffMatch(prevIndex);
+    }
+  }
+
+  void _scrollToInputMatch(int index) {
+    if (_activeSearchController == null ||
+        index < 0 ||
+        index >= _inputMatches.length)
+      return;
+
+    setState(() {
+      _currentInputMatchIndex = index;
+    });
+
+    TextRange range = _inputMatches[index];
+    _activeSearchController!.selection = TextSelection(
+      baseOffset: range.start,
+      extentOffset: range.end,
+    );
+  }
+
+  void _scrollToDiffMatch(int index) {
+    if (index < 0 || index >= _diffMatches.length) return;
+
+    setState(() {
+      _currentDiffMatchIndex = index;
+    });
+
+    _scrollToLine(_diffMatches[index].lineIndex);
+  }
+
+  void _toggleFindBar() {
+    setState(() {
+      _showFindBar = !_showFindBar;
+      if (!_showFindBar) {
+        _searchQuery = '';
+        _diffMatches = [];
+        _inputMatches = [];
+      }
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.all(16.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          // Input area
-          SizedBox(
-            height: 150,
-            child: Row(
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        "原始文本",
-                        style: TextStyle(fontWeight: FontWeight.bold),
-                      ),
-                      const SizedBox(height: 4),
-                      Expanded(
-                        child: TextField(
-                          controller: _leftController,
-                          maxLines: null,
-                          expands: true,
-                          textAlignVertical: TextAlignVertical.top,
-                          style: const TextStyle(
-                            fontFamily: 'Consolas',
-                            fontSize: 13,
-                          ),
-                          decoration: const InputDecoration(
-                            border: OutlineInputBorder(),
-                            contentPadding: EdgeInsets.all(8),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        "新文本",
-                        style: TextStyle(fontWeight: FontWeight.bold),
-                      ),
-                      const SizedBox(height: 4),
-                      Expanded(
-                        child: TextField(
-                          controller: _rightController,
-                          maxLines: null,
-                          expands: true,
-                          textAlignVertical: TextAlignVertical.top,
-                          style: const TextStyle(
-                            fontFamily: 'Consolas',
-                            fontSize: 13,
-                          ),
-                          decoration: const InputDecoration(
-                            border: OutlineInputBorder(),
-                            contentPadding: EdgeInsets.all(8),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 8),
-          Row(
+    return CallbackShortcuts(
+      bindings: {
+        const SingleActivator(LogicalKeyboardKey.keyF, control: true):
+            _toggleFindBar,
+      },
+      child: Focus(
+        autofocus: true,
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              ElevatedButton.icon(
-                onPressed: _compare,
-                icon: const Icon(Icons.compare_arrows),
-                label: const Text("对比"),
-              ),
-              const SizedBox(width: 8),
-              ElevatedButton.icon(
-                onPressed: _clear,
-                icon: const Icon(Icons.clear),
-                label: const Text("清空"),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.grey[200],
-                  foregroundColor: Colors.black87,
+              if (_showFindBar)
+                FindBar(
+                  onChanged: _onSearchChanged,
+                  onNext: _onSearchNext,
+                  onPrevious: _onSearchPrevious,
+                  onClose: () => setState(() => _showFindBar = false),
+                  currentMatch: _activeSearchController != null
+                      ? (_inputMatches.isEmpty
+                            ? 0
+                            : _currentInputMatchIndex + 1)
+                      : (_diffMatches.isEmpty ? 0 : _currentDiffMatchIndex + 1),
+                  totalMatches: _activeSearchController != null
+                      ? _inputMatches.length
+                      : _diffMatches.length,
+                ),
+              if (_showFindBar) const SizedBox(height: 8),
+              // Input area
+              SizedBox(
+                height: 150,
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            "原始文本",
+                            style: TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                          const SizedBox(height: 4),
+                          Expanded(
+                            child: TextField(
+                              controller: _leftController,
+                              focusNode: _leftInputFocusNode,
+                              maxLines: null,
+                              expands: true,
+                              textAlignVertical: TextAlignVertical.top,
+                              style: const TextStyle(
+                                fontFamily: 'Consolas',
+                                fontSize: 13,
+                              ),
+                              decoration: const InputDecoration(
+                                border: OutlineInputBorder(),
+                                contentPadding: EdgeInsets.all(8),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            "新文本",
+                            style: TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                          const SizedBox(height: 4),
+                          Expanded(
+                            child: TextField(
+                              controller: _rightController,
+                              focusNode: _rightInputFocusNode,
+                              maxLines: null,
+                              expands: true,
+                              textAlignVertical: TextAlignVertical.top,
+                              style: const TextStyle(
+                                fontFamily: 'Consolas',
+                                fontSize: 13,
+                              ),
+                              decoration: const InputDecoration(
+                                border: OutlineInputBorder(),
+                                contentPadding: EdgeInsets.all(8),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
               ),
-              const Spacer(),
-              Text(
-                "共 ${_changePositions.length} 处差异",
-                style: const TextStyle(color: Colors.grey),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  ElevatedButton.icon(
+                    onPressed: _compare,
+                    icon: const Icon(Icons.compare_arrows),
+                    label: const Text("对比"),
+                  ),
+                  const SizedBox(width: 8),
+                  ElevatedButton.icon(
+                    onPressed: _clear,
+                    icon: const Icon(Icons.clear),
+                    label: const Text("清空"),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.grey[200],
+                      foregroundColor: Colors.black87,
+                    ),
+                  ),
+                  const Spacer(),
+                  Text(
+                    "共 ${_changePositions.length} 处差异",
+                    style: const TextStyle(color: Colors.grey),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              // Diff result view
+              Expanded(
+                child: GestureDetector(
+                  onTap: () => _diffFocusNode.requestFocus(),
+                  child: Focus(
+                    focusNode: _diffFocusNode,
+                    onKeyEvent: _handleKeyEvent,
+                    child: Container(
+                      decoration: BoxDecoration(
+                        border: Border.all(color: Colors.grey.shade300),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Row(
+                        children: [
+                          // Left panel
+                          Expanded(
+                            child: _buildDiffPanel(
+                              _leftLines,
+                              _leftScrollController,
+                              _leftContentScrollController,
+                              _leftHorizontalController,
+                              true,
+                            ),
+                          ),
+                          // Divider
+                          Container(width: 1, color: Colors.grey.shade300),
+                          // Right panel
+                          Expanded(
+                            child: _buildDiffPanel(
+                              _rightLines,
+                              _rightScrollController,
+                              _rightContentScrollController,
+                              _rightHorizontalController,
+                              false,
+                            ),
+                          ),
+                          // Navigation bar
+                          Container(width: 1, color: Colors.grey.shade300),
+                          _buildNavigationBar(),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
               ),
             ],
           ),
-          const SizedBox(height: 8),
-          // Diff result view
-          Expanded(
-            child: GestureDetector(
-              onTap: () => _diffFocusNode.requestFocus(),
-              child: Focus(
-                focusNode: _diffFocusNode,
-                onKeyEvent: _handleKeyEvent,
-                child: Container(
-                  decoration: BoxDecoration(
-                    border: Border.all(color: Colors.grey.shade300),
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                  child: Row(
-                    children: [
-                      // Left panel
-                      Expanded(
-                        child: _buildDiffPanel(
-                          _leftLines,
-                          _leftScrollController,
-                          _leftContentScrollController,
-                          _leftHorizontalController,
-                          true,
-                        ),
-                      ),
-                      // Divider
-                      Container(width: 1, color: Colors.grey.shade300),
-                      // Right panel
-                      Expanded(
-                        child: _buildDiffPanel(
-                          _rightLines,
-                          _rightScrollController,
-                          _rightContentScrollController,
-                          _rightHorizontalController,
-                          false,
-                        ),
-                      ),
-                      // Navigation bar
-                      Container(width: 1, color: Colors.grey.shade300),
-                      _buildNavigationBar(),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }
@@ -722,12 +894,18 @@ class _DiffToolState extends State<DiffTool> {
 
   /// 构建行内容，支持行内差异高亮
   Widget _buildLineContent(DiffLine line, bool isLeft) {
-    if (line.type != DiffType.modified || line.segments.isEmpty) {
-      // 非修改行，直接显示文本
+    if ((line.type != DiffType.modified || line.segments.isEmpty) &&
+        _searchQuery.isEmpty) {
+      // 非修改行且无搜索，直接显示文本
       return Text(
         line.text,
         style: const TextStyle(fontSize: 13, fontFamily: 'Consolas'),
       );
+    }
+
+    if (line.type != DiffType.modified && _searchQuery.isNotEmpty) {
+      // 纯文本行的搜索高亮
+      return _buildHighlightedText(line.text, isLeft);
     }
 
     // 修改行：用 RichText 渲染 segments
@@ -821,13 +999,79 @@ class _DiffToolState extends State<DiffTool> {
                     ),
                   ),
                 );
-              }),
+              }).toList(),
             ],
           );
         },
       ),
     );
   }
+
+  Widget _buildHighlightedText(String text, bool isLeft) {
+    if (_searchQuery.isEmpty || !text.contains(_searchQuery)) {
+      return Text(
+        text,
+        style: const TextStyle(fontSize: 13, fontFamily: 'Consolas'),
+      );
+    }
+
+    List<InlineSpan> spans = [];
+    int start = 0;
+    int index = text.indexOf(_searchQuery);
+
+    while (index != -1) {
+      if (index > start) {
+        spans.add(
+          TextSpan(
+            text: text.substring(start, index),
+            style: const TextStyle(
+              fontSize: 13,
+              fontFamily: 'Consolas',
+              color: Colors.black87,
+            ),
+          ),
+        );
+      }
+      spans.add(
+        WidgetSpan(
+          child: Container(
+            color: Colors.yellow,
+            child: Text(
+              text.substring(index, index + _searchQuery.length),
+              style: const TextStyle(
+                fontSize: 13,
+                fontFamily: 'Consolas',
+                color: Colors.black,
+              ),
+            ),
+          ),
+        ),
+      );
+      start = index + _searchQuery.length;
+      index = text.indexOf(_searchQuery, start);
+    }
+
+    if (start < text.length) {
+      spans.add(
+        TextSpan(
+          text: text.substring(start),
+          style: const TextStyle(
+            fontSize: 13,
+            fontFamily: 'Consolas',
+            color: Colors.black87,
+          ),
+        ),
+      );
+    }
+
+    return RichText(text: TextSpan(children: spans));
+  }
+}
+
+class DiffSearchMatch {
+  final int lineIndex;
+
+  DiffSearchMatch({required this.lineIndex});
 }
 
 enum DiffType { equal, insert, delete, placeholder, modified }

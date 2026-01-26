@@ -1,6 +1,9 @@
 import 'dart:convert';
-import 'package:flutter/services.dart';
+
+import '../widgets/find_bar.dart';
+import '../utils/search_controller.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 class JsonFormatterTool extends StatefulWidget {
   const JsonFormatterTool({super.key});
@@ -10,8 +13,16 @@ class JsonFormatterTool extends StatefulWidget {
 }
 
 class _JsonFormatterToolState extends State<JsonFormatterTool> {
-  final TextEditingController _controller = TextEditingController();
+  final SearchTextEditingController _controller = SearchTextEditingController();
+  final ScrollController _scrollController = ScrollController();
+  final FocusNode _focusNode = FocusNode();
   String _errorText = '';
+
+  // Search State
+  bool _showFindBar = false;
+  String _searchQuery = '';
+  List<TextRange> _matches = [];
+  int _currentMatchIndex = 0;
 
   void _format() {
     setState(() {
@@ -126,84 +137,204 @@ class _JsonFormatterToolState extends State<JsonFormatterTool> {
   }
 
   @override
+  void dispose() {
+    _controller.dispose();
+    _scrollController.dispose();
+    _focusNode.dispose();
+    super.dispose();
+  }
+
+  void _onSearchChanged(String query) {
+    setState(() {
+      _searchQuery = query;
+      _matches = [];
+      _currentMatchIndex = 0;
+    });
+
+    _controller.setSearchQuery(query);
+
+    if (query.isEmpty) return;
+    _performSearch();
+  }
+
+  void _performSearch() {
+    _matches = [];
+    String text = _controller.text;
+    if (text.isEmpty) return;
+
+    int index = text.indexOf(_searchQuery);
+    while (index != -1) {
+      _matches.add(TextRange(start: index, end: index + _searchQuery.length));
+      index = text.indexOf(_searchQuery, index + 1);
+    }
+
+    if (_matches.isNotEmpty) {
+      _scrollToMatch(0);
+    }
+  }
+
+  void _onSearchNext() {
+    if (_matches.isEmpty) return;
+    int nextIndex = (_currentMatchIndex + 1) % _matches.length;
+    _scrollToMatch(nextIndex);
+  }
+
+  void _onSearchPrevious() {
+    if (_matches.isEmpty) return;
+    int prevIndex =
+        (_currentMatchIndex - 1 + _matches.length) % _matches.length;
+    _scrollToMatch(prevIndex);
+  }
+
+  void _scrollToMatch(int index) {
+    if (index < 0 || index >= _matches.length) return;
+
+    setState(() {
+      _currentMatchIndex = index;
+    });
+
+    TextRange range = _matches[index];
+    _controller.selection = TextSelection(
+      baseOffset: range.start,
+      extentOffset: range.end,
+    );
+
+    _controller.setCurrentMatchIndex(index);
+    _ensureVisible(range);
+  }
+
+  void _ensureVisible(TextRange range) {
+    String text = _controller.text;
+    if (text.isEmpty) return;
+
+    int lineCount = text.substring(0, range.start).split('\n').length;
+    double approximateLineHeight = 14 * 1.5; // based on style
+    double targetOffset = (lineCount - 1) * approximateLineHeight;
+
+    double viewportHeight = _scrollController.position.viewportDimension;
+    double centeredOffset = targetOffset - viewportHeight / 2;
+
+    if (centeredOffset < 0) centeredOffset = 0;
+    if (centeredOffset > _scrollController.position.maxScrollExtent) {
+      centeredOffset = _scrollController.position.maxScrollExtent;
+    }
+
+    _scrollController.animateTo(
+      centeredOffset,
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeInOut,
+    );
+  }
+
+  void _toggleFindBar() {
+    setState(() {
+      _showFindBar = !_showFindBar;
+      if (!_showFindBar) {
+        _searchQuery = '';
+        _matches = [];
+      }
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.all(16.0),
-      child: Column(
-        children: [
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              ElevatedButton.icon(
-                onPressed: _format,
-                icon: const Icon(Icons.format_align_left),
-                label: const Text("格式化"),
-              ),
-              ElevatedButton.icon(
-                onPressed: _compress,
-                icon: const Icon(Icons.compress),
-                label: const Text("压缩"),
-              ),
-              ElevatedButton.icon(
-                onPressed: _escape,
-                icon: const Icon(Icons.code),
-                label: const Text("转义"),
-              ),
-              ElevatedButton.icon(
-                onPressed: _unescape,
-                icon: const Icon(Icons.code_off),
-                label: const Text("去转义"),
-              ),
-              ElevatedButton.icon(
-                onPressed: _unicodeEncode,
-                icon: const Icon(Icons.translate),
-                label: const Text("Unicode编码"),
-              ),
-              ElevatedButton.icon(
-                onPressed: _unicodeDecode,
-                icon: const Icon(Icons.translate),
-                label: const Text("Unicode解码"),
-              ),
-              ElevatedButton.icon(
-                onPressed: _copy,
-                icon: const Icon(Icons.copy),
-                label: const Text("复制"),
-              ),
-              ElevatedButton.icon(
-                onPressed: _clear,
-                icon: const Icon(Icons.clear),
-                label: const Text("清空"),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.red[50],
-                  foregroundColor: Colors.red,
+    return CallbackShortcuts(
+      bindings: {
+        const SingleActivator(LogicalKeyboardKey.keyF, control: true):
+            _toggleFindBar,
+      },
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          children: [
+            if (_showFindBar)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8.0),
+                child: FindBar(
+                  onChanged: _onSearchChanged,
+                  onNext: _onSearchNext,
+                  onPrevious: _onSearchPrevious,
+                  onClose: () => setState(() => _showFindBar = false),
+                  currentMatch: _matches.isEmpty ? 0 : _currentMatchIndex + 1,
+                  totalMatches: _matches.length,
                 ),
               ),
-            ],
-          ),
-          if (_errorText.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.only(top: 8.0),
-              child: Text(
-                _errorText,
-                style: const TextStyle(color: Colors.red),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                ElevatedButton.icon(
+                  onPressed: _format,
+                  icon: const Icon(Icons.format_align_left),
+                  label: const Text("格式化"),
+                ),
+                ElevatedButton.icon(
+                  onPressed: _compress,
+                  icon: const Icon(Icons.compress),
+                  label: const Text("压缩"),
+                ),
+                ElevatedButton.icon(
+                  onPressed: _escape,
+                  icon: const Icon(Icons.code),
+                  label: const Text("转义"),
+                ),
+                ElevatedButton.icon(
+                  onPressed: _unescape,
+                  icon: const Icon(Icons.code_off),
+                  label: const Text("去转义"),
+                ),
+                ElevatedButton.icon(
+                  onPressed: _unicodeEncode,
+                  icon: const Icon(Icons.translate),
+                  label: const Text("Unicode编码"),
+                ),
+                ElevatedButton.icon(
+                  onPressed: _unicodeDecode,
+                  icon: const Icon(Icons.translate),
+                  label: const Text("Unicode解码"),
+                ),
+                ElevatedButton.icon(
+                  onPressed: _copy,
+                  icon: const Icon(Icons.copy),
+                  label: const Text("复制"),
+                ),
+                ElevatedButton.icon(
+                  onPressed: _clear,
+                  icon: const Icon(Icons.clear),
+                  label: const Text("清空"),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.red[50],
+                    foregroundColor: Colors.red,
+                  ),
+                ),
+              ],
+            ),
+            if (_errorText.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 8.0),
+                child: Text(
+                  _errorText,
+                  style: const TextStyle(color: Colors.red),
+                ),
+              ),
+            const SizedBox(height: 8),
+            Expanded(
+              child: TextField(
+                controller: _controller,
+                scrollController: _scrollController,
+                focusNode: _focusNode,
+                maxLines: null,
+                expands: true,
+                style: const TextStyle(fontFamily: 'monospace', fontSize: 14),
+                textAlignVertical: TextAlignVertical.top,
+                decoration: const InputDecoration(
+                  border: OutlineInputBorder(),
+                  hintText: '在此输入 JSON 字符串...',
+                ),
               ),
             ),
-          const SizedBox(height: 8),
-          Expanded(
-            child: TextField(
-              controller: _controller,
-              maxLines: null,
-              expands: true,
-              style: const TextStyle(fontFamily: 'monospace', fontSize: 14),
-              textAlignVertical: TextAlignVertical.top,
-              decoration: const InputDecoration(
-                border: OutlineInputBorder(),
-                hintText: '在此输入 JSON 字符串...',
-              ),
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
