@@ -11,6 +11,7 @@ import '../services/holiday_service.dart';
 import '../widgets/sticky_note_card.dart';
 import '../widgets/reminder_dialog.dart';
 import '../widgets/image_viewer_dialog.dart';
+import '../widgets/calendar_dialog.dart';
 import 'package:intl/intl.dart';
 
 /// 便签工具主界面
@@ -149,6 +150,13 @@ class _StickyNoteToolState extends State<StickyNoteTool> {
                 ),
               ),
               const SizedBox(width: 16),
+              // 日历按钮
+              IconButton(
+                icon: const Icon(Icons.calendar_month),
+                tooltip: '节假日日历',
+                onPressed: _showCalendar,
+              ),
+              const SizedBox(width: 8),
               TextButton.icon(
                 onPressed: _confirmClearAll,
                 icon: const Icon(Icons.delete_sweep, size: 20),
@@ -645,5 +653,9 @@ class _StickyNoteToolState extends State<StickyNoteTool> {
     }
 
     return result;
+  }
+
+  void _showCalendar() {
+    showDialog(context: context, builder: (context) => const CalendarDialog());
   }
 }

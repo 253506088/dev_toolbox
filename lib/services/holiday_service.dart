@@ -16,6 +16,10 @@ class HolidayService {
   static bool _apiFailed = false;
   static bool get apiFailed => _apiFailed;
 
+  // 最后一次错误信息
+  static String? _lastError;
+  static String? get lastError => _lastError;
+
   /// 统一日志方法
   static void _log(String message) {
     final now = DateTime.now();
@@ -120,6 +124,7 @@ class HolidayService {
       if (status != 200) {
         _log('HTTP 错误: $status');
         _apiFailed = true;
+        _lastError = 'HTTP 请求失败 (状态码: $status)';
         return false;
       }
 
@@ -127,8 +132,10 @@ class HolidayService {
 
       final Map<String, dynamic> data = jsonDecode(response.body);
       if (data['code'] != 0) {
-        _log('API 返回错误 code: ${data['code']}, msg: ${data['msg']}');
+        final msg = data['msg'];
+        _log('API 返回错误 code: ${data['code']}, msg: $msg');
         _apiFailed = true;
+        _lastError = 'API 错误: $msg';
         return false;
       }
 
@@ -155,11 +162,13 @@ class HolidayService {
 
       _log('[API查询成功缓存到xxx路径] key: $monthKey');
       _apiFailed = false;
+      _lastError = null;
       return true;
     } catch (e, stackTrace) {
       _log('获取节假日数据失败: $e');
       _log('堆栈: $stackTrace');
       _apiFailed = true;
+      _lastError = '网络或解析异常: $e';
       return false;
     }
   }
