@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:path/path.dart' as p;
 
 /// 节假日服务 - 调用 API 获取工作日信息
 class HolidayService {
@@ -14,17 +16,32 @@ class HolidayService {
   static bool _apiFailed = false;
   static bool get apiFailed => _apiFailed;
 
-  /// 判断指定日期是否是工作日
-  static Future<bool> isWorkday(DateTime date) async {
-    final monthKey = _getMonthKey(date);
-    final dateKey = _getDateKey(date);
+  /// 统一日志方法
+  static void _log(String message) {
+    final now = DateTime.now();
+    final timestamp =
+        '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')} '
+        '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}:${now.second.toString().padLeft(2, '0')}.${now.millisecond.toString().padLeft(3, '0')}';
+    print('[$timestamp] [HolidayService] $message');
+  }
+
+  /// 尝试从缓存（内存 -> 硬盘）加载数据
+  /// 返回 true 表示命中缓存（已加载到内存），false 表示需要调用 API
+  static Future<bool> _loadFromSafeCache(int year, int month) async {
+    final monthKey = '$year${month.toString().padLeft(2, '0')}';
 
     // 1. 检查内存缓存
+    _log('[内存寻找] key: $monthKey');
     if (_cache.containsKey(monthKey)) {
-      return _cache[monthKey]![dateKey] ?? _defaultIsWorkday(date);
+      // _log('内存缓存命中: $monthKey');
+      return true;
     }
 
     // 2. 检查本地缓存
+    final appDocDir = await getApplicationSupportDirectory();
+    final prefsPath = p.join(appDocDir.path, 'shared_preferences.json');
+    _log('[硬盘寻找] key: $monthKey, path: $prefsPath');
+
     final prefs = await SharedPreferences.getInstance();
     final cachedData = prefs.getString('$_cachePrefix$monthKey');
     if (cachedData != null) {
@@ -33,26 +50,45 @@ class HolidayService {
         _cache[monthKey] = data.map(
           (k, v) => MapEntry(int.parse(k), v as bool),
         );
-        return _cache[monthKey]![dateKey] ?? _defaultIsWorkday(date);
-      } catch (_) {}
+        _log('[硬盘寻找] 成功加载本地缓存: $monthKey');
+        return true;
+      } catch (e) {
+        _log('[硬盘寻找] 本地缓存解析失败: $e');
+      }
+    } else {
+      // _log('[硬盘寻找] 未找到本地缓存: $monthKey');
     }
 
-    // 3. 从 API 获取
+    return false;
+  }
+
+  /// 判断指定日期是否是工作日
+  static Future<bool> isWorkday(DateTime date) async {
+    final monthKey = _getMonthKey(date);
+    final dateKey = _getDateKey(date);
+
+    // 1. 尝试从缓存加载 (内存 -> 硬盘)
+    if (await _loadFromSafeCache(date.year, date.month)) {
+      return _cache[monthKey]![dateKey] ?? _defaultIsWorkday(date);
+    }
+
+    // 2. 从 API 获取
     final success = await _fetchMonth(date.year, date.month);
     if (success && _cache.containsKey(monthKey)) {
       return _cache[monthKey]![dateKey] ?? _defaultIsWorkday(date);
     }
 
-    // 4. 降级到默认逻辑
+    // 3. 降级到默认逻辑
     return _defaultIsWorkday(date);
   }
 
   /// 预加载指定月份的数据
   static Future<bool> preloadMonth(int year, int month) async {
-    final monthKey = '$year${month.toString().padLeft(2, '0')}';
-    if (_cache.containsKey(monthKey)) {
+    // 优先检查缓存 (内存 -> 硬盘)
+    if (await _loadFromSafeCache(year, month)) {
       return true;
     }
+    // 缓存未命中，调用 API
     return _fetchMonth(year, month);
   }
 
@@ -70,36 +106,34 @@ class HolidayService {
     final monthKey = '$year${month.toString().padLeft(2, '0')}';
 
     try {
+      _log('[API查询] year: $year, month: $month');
       final url = '$_baseUrl?year=$year&month=$monthKey&cn=1';
-      print('[HolidayService] 请求 URL: $url');
+      _log('请求 URL: $url');
 
       final response = await http
           .get(Uri.parse(url))
           .timeout(const Duration(seconds: 10));
 
-      print('[HolidayService] 响应状态码: ${response.statusCode}');
+      final status = response.statusCode;
+      // _log('响应状态码: $status');
 
-      if (response.statusCode != 200) {
-        print('[HolidayService] HTTP 错误: ${response.statusCode}');
+      if (status != 200) {
+        _log('HTTP 错误: $status');
         _apiFailed = true;
         return false;
       }
 
-      print(
-        '[HolidayService] 响应内容: ${response.body.substring(0, response.body.length > 200 ? 200 : response.body.length)}...',
-      );
+      // _log('响应内容: ${response.body.substring(0, response.body.length > 200 ? 200 : response.body.length)}...');
 
       final Map<String, dynamic> data = jsonDecode(response.body);
       if (data['code'] != 0) {
-        print(
-          '[HolidayService] API 返回错误 code: ${data['code']}, msg: ${data['msg']}',
-        );
+        _log('API 返回错误 code: ${data['code']}, msg: ${data['msg']}');
         _apiFailed = true;
         return false;
       }
 
       final list = data['data']['list'] as List<dynamic>;
-      print('[HolidayService] 获取到 ${list.length} 条数据');
+      _log('获取到 ${list.length} 条数据');
 
       final Map<int, bool> workdayMap = {};
 
@@ -119,12 +153,12 @@ class HolidayService {
         jsonEncode(workdayMap.map((k, v) => MapEntry(k.toString(), v))),
       );
 
-      print('[HolidayService] 成功缓存 $monthKey 数据');
+      _log('[API查询成功缓存到xxx路径] key: $monthKey');
       _apiFailed = false;
       return true;
     } catch (e, stackTrace) {
-      print('[HolidayService] 获取节假日数据失败: $e');
-      print('[HolidayService] 堆栈: $stackTrace');
+      _log('获取节假日数据失败: $e');
+      _log('堆栈: $stackTrace');
       _apiFailed = true;
       return false;
     }
