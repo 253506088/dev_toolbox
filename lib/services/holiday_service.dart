@@ -33,7 +33,7 @@ class HolidayService {
     final monthKey = '$year${month.toString().padLeft(2, '0')}';
 
     // 1. 检查内存缓存
-    _log('[内存寻找] key: $monthKey');
+//     _log('[内存寻找] key: $monthKey');
     if (_cache.containsKey(monthKey)) {
       // _log('内存缓存命中: $monthKey');
       return true;
