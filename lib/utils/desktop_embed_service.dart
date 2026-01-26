@@ -1,4 +1,5 @@
 import 'package:flutter/services.dart';
+import 'logger.dart';
 
 /// 桌面嵌入服务
 /// 提供将窗口嵌入到桌面（钉在桌面）的功能
@@ -18,7 +19,7 @@ class DesktopEmbedService {
       _isEmbedded = result ?? false;
       return _isEmbedded;
     } on PlatformException catch (e) {
-      print('嵌入桌面失败: ${e.message}');
+      Logger.log('DesktopEmbedService', '嵌入桌面失败: ${e.message}');
       return false;
     }
   }
@@ -33,7 +34,7 @@ class DesktopEmbedService {
       }
       return result ?? false;
     } on PlatformException catch (e) {
-      print('从桌面分离失败: ${e.message}');
+      Logger.log('DesktopEmbedService', '从桌面分离失败: ${e.message}');
       return false;
     }
   }
@@ -43,7 +44,7 @@ class DesktopEmbedService {
     try {
       return await _channel.invokeMethod<int>('getWindowHandle');
     } on PlatformException catch (e) {
-      print('获取窗口句柄失败: ${e.message}');
+      Logger.log('DesktopEmbedService', '获取窗口句柄失败: ${e.message}');
       return null;
     }
   }

@@ -5,6 +5,7 @@ import 'dart:typed_data';
 import 'package:path_provider/path_provider.dart';
 import 'package:uuid/uuid.dart';
 import '../models/sticky_note.dart';
+import '../utils/logger.dart';
 
 /// 便签服务 - CRUD 和持久化
 class StickyNoteService {
@@ -133,7 +134,7 @@ class StickyNoteService {
   static Future<void> _load() async {
     try {
       final file = await _getFile();
-      print('[StickyNoteService] 数据存储路径: ${file.path}');
+      Logger.log('StickyNoteService', '数据存储路径: ${file.path}');
 
       if (await file.exists()) {
         final content = await file.readAsString();
@@ -143,7 +144,7 @@ class StickyNoteService {
             .toList();
       }
     } catch (e) {
-      print('加载便签失败: $e');
+      Logger.log('StickyNoteService', '加载便签失败: $e');
       _notes = [];
     }
   }
@@ -154,9 +155,9 @@ class StickyNoteService {
       final file = await _getFile();
       final jsonList = _notes.map((n) => n.toJson()).toList();
       await file.writeAsString(jsonEncode(jsonList));
-      print('[StickyNoteService] 数据已保存至: ${file.path}');
+      Logger.log('StickyNoteService', '数据已保存至: ${file.path}');
     } catch (e) {
-      print('保存便签失败: $e');
+      Logger.log('StickyNoteService', '保存便签失败: $e');
     }
   }
 
@@ -207,7 +208,7 @@ class StickyNoteService {
         }
       }
     } catch (e) {
-      print('删除图片失败: $e');
+      Logger.log('StickyNoteService', '删除图片失败: $e');
     }
   }
 }

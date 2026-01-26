@@ -9,6 +9,7 @@ import '../models/sticky_note_reminder.dart';
 import 'sticky_note_service.dart';
 import 'holiday_service.dart';
 import '../widgets/image_viewer_dialog.dart';
+import '../utils/logger.dart';
 
 /// 提醒服务 - 定时检查并触发提醒
 class ReminderService {
@@ -28,7 +29,7 @@ class ReminderService {
   static Future<void> init() async {
     if (_initialized) return;
 
-    print('[ReminderService] 初始化开始...');
+    Logger.log('ReminderService', '初始化开始...');
 
     // 初始化本地通知（Windows）
     try {
@@ -36,9 +37,9 @@ class ReminderService {
         appName: 'DevToolbox',
         shortcutPolicy: ShortcutPolicy.requireCreate,
       );
-      print('[ReminderService] 本地通知已初始化');
+      Logger.log('ReminderService', '本地通知已初始化');
     } catch (e) {
-      print('[ReminderService] 本地通知初始化失败: $e');
+      Logger.log('ReminderService', '本地通知初始化失败: $e');
     }
 
     // 预加载本月节假日数据
@@ -50,7 +51,7 @@ class ReminderService {
     _cron.schedule(Schedule.parse('*/1 * * * *'), () async {
       await _check();
     });
-    print('[ReminderService] Cron调度器已启动，每分钟对齐检查');
+    Logger.log('ReminderService', 'Cron调度器已启动，每分钟对齐检查');
 
     _initialized = true;
   }
@@ -150,7 +151,7 @@ class ReminderService {
 
   /// 触发提醒
   static Future<void> _trigger(StickyNote note) async {
-    print('[ReminderService] >>> 触发提醒: ${note.content}');
+    Logger.log('ReminderService', '>>> 触发提醒: ${note.content}');
 
     // 更新 lastTriggered
     final updatedReminder = note.reminder!.copyWith(
@@ -188,10 +189,10 @@ class ReminderService {
           '-Command',
           '[System.Media.SystemSounds]::Exclamation.Play()',
         ]);
-        print('[ReminderService] 播放提示音');
+        Logger.log('ReminderService', '播放提示音');
       }
     } catch (e) {
-      print('[ReminderService] 播放声音失败: $e');
+      Logger.log('ReminderService', '播放声音失败: $e');
     }
   }
 
@@ -205,9 +206,9 @@ class ReminderService {
       Future.delayed(const Duration(seconds: 10), () async {
         await windowManager.setAlwaysOnTop(false);
       });
-      print('[ReminderService] 窗口已置顶');
+      Logger.log('ReminderService', '窗口已置顶');
     } catch (e) {
-      print('[ReminderService] 窗口置顶失败: $e');
+      Logger.log('ReminderService', '窗口置顶失败: $e');
     }
   }
 
@@ -232,9 +233,9 @@ class ReminderService {
             : note.content,
       );
       await notification.show();
-      print('[ReminderService] 系统通知已显示');
+      Logger.log('ReminderService', '系统通知已显示');
     } catch (e) {
-      print('[ReminderService] 系统通知失败: $e');
+      Logger.log('ReminderService', '系统通知失败: $e');
     }
   }
 

@@ -12,6 +12,7 @@ import '../widgets/sticky_note_card.dart';
 import '../widgets/reminder_dialog.dart';
 import '../widgets/image_viewer_dialog.dart';
 import '../widgets/calendar_dialog.dart';
+import '../utils/logger.dart';
 import 'package:intl/intl.dart';
 
 /// 便签工具主界面
@@ -180,20 +181,24 @@ class _StickyNoteToolState extends State<StickyNoteTool> {
                 : GestureDetector(
                     behavior: HitTestBehavior.opaque, // 确保能捕获点击
                     onTap: () {
-                      print(
-                        'DEBUG: GestureDetector tapped, requesting focus. Current focus: ${_focusNode.hasFocus}',
+                      Logger.log(
+                        'StickyNoteTool',
+                        'GestureDetector tapped, requesting focus. Current focus: ${_focusNode.hasFocus}',
                       );
                       _focusNode.requestFocus();
                     },
                     child: Focus(
                       focusNode: _focusNode,
                       autofocus: true,
-                      onFocusChange: (value) =>
-                          print('DEBUG: Focus state changed: $value'),
+                      onFocusChange: (value) => Logger.log(
+                        'StickyNoteTool',
+                        'Focus state changed: $value',
+                      ),
                       onKeyEvent: (node, event) {
                         if (event is KeyDownEvent) {
-                          print(
-                            'DEBUG: Key down: ${event.logicalKey.keyLabel} (${event.logicalKey.keyId})',
+                          Logger.log(
+                            'StickyNoteTool',
+                            'Key down: ${event.logicalKey.keyLabel} (${event.logicalKey.keyId})',
                           );
                           if (event.logicalKey == LogicalKeyboardKey.home) {
                             _scrollToTop();
@@ -414,22 +419,22 @@ class _StickyNoteToolState extends State<StickyNoteTool> {
           builder: (context, setState) {
             // 处理粘贴
             Future<void> handlePaste() async {
-              print('DEBUG: Handling paste...');
+              Logger.log('StickyNoteTool', 'Handling paste...');
               // 优先检查文件（支持 GIF）
               final files = await Pasteboard.files();
-              print('DEBUG: Pasteboard files: $files');
+              Logger.log('StickyNoteTool', 'Pasteboard files: $files');
 
               if (files.isNotEmpty) {
                 for (final path in files) {
                   final file = File(path);
                   if (await file.exists()) {
-                    print('DEBUG: Processing file: $path');
+                    Logger.log('StickyNoteTool', 'Processing file: $path');
                     final bytes = await file.readAsBytes();
                     // 这里不需要严格检查是不是图片，saveImage 那边的检测只是为了优化扩展名
                     // 但为了避免保存非图片，可以简单判断一下扩展名或者直接交给 saveImage
                     // 假设用户只会复制图片文件
                     final fileName = await StickyNoteService.saveImage(bytes);
-                    print('DEBUG: Saved image: $fileName');
+                    Logger.log('StickyNoteTool', 'Saved image: $fileName');
                     tempSessionImages.add(fileName); // 记录临时图片
                     setState(() {
                       currentImagePaths.add(fileName);
@@ -439,10 +444,16 @@ class _StickyNoteToolState extends State<StickyNoteTool> {
                 return;
               }
 
-              print('DEBUG: No files found, checking image data...');
+              Logger.log(
+                'StickyNoteTool',
+                'No files found, checking image data...',
+              );
               // 其次检查剪贴板图片数据（通常是 Bitmap，GIF 会变静态）
               final imageBytes = await Pasteboard.image;
-              print('DEBUG: Image bytes found: ${imageBytes != null}');
+              Logger.log(
+                'StickyNoteTool',
+                'Image bytes found: ${imageBytes != null}',
+              );
               if (imageBytes != null) {
                 final fileName = await StickyNoteService.saveImage(imageBytes);
                 tempSessionImages.add(fileName); // 记录临时图片
@@ -452,13 +463,13 @@ class _StickyNoteToolState extends State<StickyNoteTool> {
               }
               // 最后检查文本
               else {
-                print('DEBUG: checking text data...');
+                Logger.log('StickyNoteTool', 'checking text data...');
                 final clipboardData = await Clipboard.getData(
                   Clipboard.kTextPlain,
                 );
                 final text = clipboardData?.text;
                 if (text != null && text.isNotEmpty) {
-                  print('DEBUG: Text found: $text');
+                  Logger.log('StickyNoteTool', 'Text found: $text');
                   final textSelection = controller.selection;
                   final fullText = controller.text;
                   if (!textSelection.isValid) {
@@ -644,10 +655,10 @@ class _StickyNoteToolState extends State<StickyNoteTool> {
           final file = await StickyNoteService.getImageFile(path);
           if (await file.exists()) {
             await file.delete();
-            print('DEBUG: Deleted orphaned image: $path');
+            Logger.log('StickyNoteTool', 'Deleted orphaned image: $path');
           }
         } catch (e) {
-          print('Error deleting orphaned image: $e');
+          Logger.log('StickyNoteTool', 'Error deleting orphaned image: $e');
         }
       }
     }

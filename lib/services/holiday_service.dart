@@ -3,6 +3,7 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
+import '../utils/logger.dart';
 
 /// 节假日服务 - 调用 API 获取工作日信息
 class HolidayService {
@@ -21,12 +22,9 @@ class HolidayService {
   static String? get lastError => _lastError;
 
   /// 统一日志方法
+  /// 统一日志方法
   static void _log(String message) {
-    final now = DateTime.now();
-    final timestamp =
-        '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')} '
-        '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}:${now.second.toString().padLeft(2, '0')}.${now.millisecond.toString().padLeft(3, '0')}';
-    print('[$timestamp] [HolidayService] $message');
+    Logger.log('HolidayService', message);
   }
 
   /// 尝试从缓存（内存 -> 硬盘）加载数据
