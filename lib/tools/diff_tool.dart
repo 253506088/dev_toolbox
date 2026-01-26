@@ -14,6 +14,10 @@ class _DiffToolState extends State<DiffTool> {
   final TextEditingController _rightController = TextEditingController();
   final ScrollController _leftScrollController = ScrollController();
   final ScrollController _rightScrollController = ScrollController();
+  final ScrollController _leftContentScrollController = ScrollController();
+  final ScrollController _rightContentScrollController = ScrollController();
+  final ScrollController _leftHorizontalController = ScrollController();
+  final ScrollController _rightHorizontalController = ScrollController();
   final ScrollController _navScrollController = ScrollController();
   final FocusNode _diffFocusNode = FocusNode();
 
@@ -27,6 +31,10 @@ class _DiffToolState extends State<DiffTool> {
     super.initState();
     _leftScrollController.addListener(_onLeftScroll);
     _rightScrollController.addListener(_onRightScroll);
+    _leftContentScrollController.addListener(_onLeftContentScroll);
+    _rightContentScrollController.addListener(_onRightContentScroll);
+    _leftHorizontalController.addListener(_onLeftHorizontalScroll);
+    _rightHorizontalController.addListener(_onRightHorizontalScroll);
   }
 
   @override
@@ -35,12 +43,17 @@ class _DiffToolState extends State<DiffTool> {
     _rightController.dispose();
     _leftScrollController.dispose();
     _rightScrollController.dispose();
+    _leftContentScrollController.dispose();
+    _rightContentScrollController.dispose();
+    _leftHorizontalController.dispose();
+    _rightHorizontalController.dispose();
     _navScrollController.dispose();
     _diffFocusNode.dispose();
     super.dispose();
   }
 
   bool _isScrolling = false;
+  bool _isHorizontalScrolling = false;
 
   void _onLeftScroll() {
     if (_syncScroll &&
@@ -49,6 +62,12 @@ class _DiffToolState extends State<DiffTool> {
         _rightScrollController.hasClients) {
       _isScrolling = true;
       _rightScrollController.jumpTo(_leftScrollController.offset);
+      if (_leftContentScrollController.hasClients) {
+        _leftContentScrollController.jumpTo(_leftScrollController.offset);
+      }
+      if (_rightContentScrollController.hasClients) {
+        _rightContentScrollController.jumpTo(_leftScrollController.offset);
+      }
       _isScrolling = false;
     }
   }
@@ -60,7 +79,75 @@ class _DiffToolState extends State<DiffTool> {
         _rightScrollController.hasClients) {
       _isScrolling = true;
       _leftScrollController.jumpTo(_rightScrollController.offset);
+      if (_leftContentScrollController.hasClients) {
+        _leftContentScrollController.jumpTo(_rightScrollController.offset);
+      }
+      if (_rightContentScrollController.hasClients) {
+        _rightContentScrollController.jumpTo(_rightScrollController.offset);
+      }
       _isScrolling = false;
+    }
+  }
+
+  void _onLeftContentScroll() {
+    if (_syncScroll &&
+        !_isScrolling &&
+        _leftContentScrollController.hasClients) {
+      _isScrolling = true;
+      if (_leftScrollController.hasClients) {
+        _leftScrollController.jumpTo(_leftContentScrollController.offset);
+      }
+      if (_rightScrollController.hasClients) {
+        _rightScrollController.jumpTo(_leftContentScrollController.offset);
+      }
+      if (_rightContentScrollController.hasClients) {
+        _rightContentScrollController.jumpTo(
+          _leftContentScrollController.offset,
+        );
+      }
+      _isScrolling = false;
+    }
+  }
+
+  void _onRightContentScroll() {
+    if (_syncScroll &&
+        !_isScrolling &&
+        _rightContentScrollController.hasClients) {
+      _isScrolling = true;
+      if (_leftScrollController.hasClients) {
+        _leftScrollController.jumpTo(_rightContentScrollController.offset);
+      }
+      if (_rightScrollController.hasClients) {
+        _rightScrollController.jumpTo(_rightContentScrollController.offset);
+      }
+      if (_leftContentScrollController.hasClients) {
+        _leftContentScrollController.jumpTo(
+          _rightContentScrollController.offset,
+        );
+      }
+      _isScrolling = false;
+    }
+  }
+
+  void _onLeftHorizontalScroll() {
+    if (_syncScroll &&
+        !_isHorizontalScrolling &&
+        _leftHorizontalController.hasClients &&
+        _rightHorizontalController.hasClients) {
+      _isHorizontalScrolling = true;
+      _rightHorizontalController.jumpTo(_leftHorizontalController.offset);
+      _isHorizontalScrolling = false;
+    }
+  }
+
+  void _onRightHorizontalScroll() {
+    if (_syncScroll &&
+        !_isHorizontalScrolling &&
+        _leftHorizontalController.hasClients &&
+        _rightHorizontalController.hasClients) {
+      _isHorizontalScrolling = true;
+      _leftHorizontalController.jumpTo(_rightHorizontalController.offset);
+      _isHorizontalScrolling = false;
     }
   }
 
@@ -475,6 +562,8 @@ class _DiffToolState extends State<DiffTool> {
                         child: _buildDiffPanel(
                           _leftLines,
                           _leftScrollController,
+                          _leftContentScrollController,
+                          _leftHorizontalController,
                           true,
                         ),
                       ),
@@ -485,6 +574,8 @@ class _DiffToolState extends State<DiffTool> {
                         child: _buildDiffPanel(
                           _rightLines,
                           _rightScrollController,
+                          _rightContentScrollController,
+                          _rightHorizontalController,
                           false,
                         ),
                       ),
@@ -505,84 +596,127 @@ class _DiffToolState extends State<DiffTool> {
   Widget _buildDiffPanel(
     List<DiffLine> lines,
     ScrollController controller,
+    ScrollController contentController,
+    ScrollController horizontalController,
     bool isLeft,
   ) {
-    return ListView.builder(
-      controller: controller,
-      itemCount: lines.length,
-      itemExtent: 24,
-      itemBuilder: (context, index) {
-        final line = lines[index];
-        Color? bgColor;
-        Color? lineNumColor = Colors.grey;
-        String? indicator;
-        Color? indicatorColor;
+    return Row(
+      children: [
+        // 固定左侧区域：行号 + 指示器
+        SizedBox(
+          width: 71, // 50(行号) + 1(分隔线) + 20(指示器)
+          child: ListView.builder(
+            controller: controller,
+            itemCount: lines.length,
+            itemExtent: 24,
+            itemBuilder: (context, index) {
+              final line = lines[index];
+              Color? bgColor;
+              Color? lineNumColor = Colors.grey;
+              String? indicator;
+              Color? indicatorColor;
 
-        if (line.type == DiffType.delete) {
-          bgColor = Colors.red.shade50;
-          lineNumColor = Colors.red;
-          indicator = '-';
-          indicatorColor = Colors.red;
-        } else if (line.type == DiffType.insert) {
-          bgColor = Colors.green.shade50;
-          lineNumColor = Colors.green;
-          indicator = '+';
-          indicatorColor = Colors.green;
-        } else if (line.type == DiffType.modified) {
-          // 修改行：浅黄色背景
-          bgColor = Colors.amber.shade50;
-          lineNumColor = Colors.orange;
-          indicator = '~';
-          indicatorColor = Colors.orange;
-        } else if (line.type == DiffType.placeholder) {
-          bgColor = Colors.grey.shade100;
-        }
+              if (line.type == DiffType.delete) {
+                bgColor = Colors.red.shade50;
+                lineNumColor = Colors.red;
+                indicator = '-';
+                indicatorColor = Colors.red;
+              } else if (line.type == DiffType.insert) {
+                bgColor = Colors.green.shade50;
+                lineNumColor = Colors.green;
+                indicator = '+';
+                indicatorColor = Colors.green;
+              } else if (line.type == DiffType.modified) {
+                bgColor = Colors.amber.shade50;
+                lineNumColor = Colors.orange;
+                indicator = '~';
+                indicatorColor = Colors.orange;
+              } else if (line.type == DiffType.placeholder) {
+                bgColor = Colors.grey.shade100;
+              }
 
-        return Container(
-          color: bgColor,
-          child: Row(
-            children: [
-              // Line number
-              Container(
-                width: 50,
-                padding: const EdgeInsets.symmetric(horizontal: 8),
-                color: Colors.grey.shade100,
-                alignment: Alignment.centerRight,
-                child: Text(
-                  line.lineNum?.toString() ?? '',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: lineNumColor,
-                    fontFamily: 'Consolas',
-                  ),
-                ),
-              ),
-              Container(width: 1, color: Colors.grey.shade300),
-              // Change indicator
-              Container(
-                width: 20,
-                alignment: Alignment.center,
-                child: indicator != null
-                    ? Text(
-                        indicator,
+              return Container(
+                color: bgColor,
+                child: Row(
+                  children: [
+                    // 行号
+                    Container(
+                      width: 50,
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      color: Colors.grey.shade100,
+                      alignment: Alignment.centerRight,
+                      child: Text(
+                        line.lineNum?.toString() ?? '',
                         style: TextStyle(
-                          color: indicatorColor,
-                          fontWeight: FontWeight.bold,
+                          fontSize: 12,
+                          color: lineNumColor,
+                          fontFamily: 'Consolas',
                         ),
-                      )
-                    : null,
-              ),
-              // Content - 使用 RichText 渲染行内差异
-              Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 4),
-                  child: _buildLineContent(line, isLeft),
+                      ),
+                    ),
+                    Container(width: 1, color: Colors.grey.shade300),
+                    // 指示器
+                    Container(
+                      width: 20,
+                      alignment: Alignment.center,
+                      child: indicator != null
+                          ? Text(
+                              indicator,
+                              style: TextStyle(
+                                color: indicatorColor,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            )
+                          : null,
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+        ),
+        // 可横向滚动的内容区域
+        Expanded(
+          child: Scrollbar(
+            controller: horizontalController,
+            thumbVisibility: true,
+            child: SingleChildScrollView(
+              controller: horizontalController,
+              scrollDirection: Axis.horizontal,
+              child: SizedBox(
+                // 设置一个足够宽的宽度以容纳长文本
+                width: 2000,
+                child: ListView.builder(
+                  controller: contentController,
+                  itemCount: lines.length,
+                  itemExtent: 24,
+                  itemBuilder: (context, index) {
+                    final line = lines[index];
+                    Color? bgColor;
+
+                    if (line.type == DiffType.delete) {
+                      bgColor = Colors.red.shade50;
+                    } else if (line.type == DiffType.insert) {
+                      bgColor = Colors.green.shade50;
+                    } else if (line.type == DiffType.modified) {
+                      bgColor = Colors.amber.shade50;
+                    } else if (line.type == DiffType.placeholder) {
+                      bgColor = Colors.grey.shade100;
+                    }
+
+                    return Container(
+                      color: bgColor,
+                      padding: const EdgeInsets.symmetric(horizontal: 4),
+                      alignment: Alignment.centerLeft,
+                      child: _buildLineContent(line, isLeft),
+                    );
+                  },
                 ),
               ),
-            ],
+            ),
           ),
-        );
-      },
+        ),
+      ],
     );
   }
 
@@ -593,8 +727,6 @@ class _DiffToolState extends State<DiffTool> {
       return Text(
         line.text,
         style: const TextStyle(fontSize: 13, fontFamily: 'Consolas'),
-        overflow: TextOverflow.clip,
-        maxLines: 1,
       );
     }
 
@@ -633,11 +765,7 @@ class _DiffToolState extends State<DiffTool> {
       }
     }
 
-    return RichText(
-      text: TextSpan(children: spans),
-      overflow: TextOverflow.clip,
-      maxLines: 1,
-    );
+    return RichText(text: TextSpan(children: spans));
   }
 
   Widget _buildNavigationBar() {

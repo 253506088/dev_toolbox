@@ -149,7 +149,9 @@ class _MainWindowState extends State<MainWindow> {
             ),
           ),
           const VerticalDivider(thickness: 1, width: 1),
-          Expanded(child: _tools[_selectedIndex]),
+          Expanded(
+            child: IndexedStack(index: _selectedIndex, children: _tools),
+          ),
         ],
       ),
     );
