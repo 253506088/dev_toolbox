@@ -132,6 +132,13 @@ class _SqlFormatToolState extends State<SqlFormatTool> {
 
     int i = 0;
     bool inSelectColumns = false;
+
+    // New flags for INSERT/UPDATE support
+    bool inInsertMode = false;
+    bool inInsertColumns = false;
+    bool inInsertValues = false;
+    bool inUpdateSet = false;
+
     int funcDepth = 0; // 函数括号深度
     int subqueryDepth = 0; // 子查询括号深度
     int parenDepth = 0; // 普通括号深度（WHERE 条件中的）
@@ -162,8 +169,52 @@ class _SqlFormatToolState extends State<SqlFormatTool> {
         continue;
       }
 
+      // ========== INSERT ==========
+      if (upper == 'INSERT') {
+        inInsertMode = true;
+        _writeNewlineIndent(result, indentLevel);
+        result.write('INSERT ');
+        i++;
+        continue;
+      }
+
+      // ========== INTO ==========
+      if (upper == 'INTO') {
+        result.write('INTO ');
+        i++;
+        continue;
+      }
+
+      // ========== VALUES ==========
+      if (upper == 'VALUES') {
+        inInsertMode = false;
+        inInsertColumns = false;
+        _writeNewlineIndent(result, indentLevel);
+        result.write('VALUES');
+        i++;
+        continue;
+      }
+
+      // ========== UPDATE ==========
+      if (upper == 'UPDATE') {
+        _writeNewlineIndent(result, indentLevel);
+        result.write('UPDATE ');
+        i++;
+        continue;
+      }
+
+      // ========== SET ==========
+      if (upper == 'SET') {
+        inUpdateSet = true;
+        _writeNewlineIndent(result, indentLevel);
+        result.write('SET ');
+        i++;
+        continue;
+      }
+
       // ========== WHERE ==========
       if (upper == 'WHERE') {
+        inUpdateSet = false;
         _writeNewlineIndent(result, indentLevel);
         result.write('WHERE ');
         i++;
@@ -271,6 +322,28 @@ class _SqlFormatToolState extends State<SqlFormatTool> {
           continue;
         }
 
+        // Check if previous was VALUES -> start of insert values tuple
+        if (prevUpper == 'VALUES') {
+          inInsertValues = true;
+          result.write('(');
+          indentLevel++;
+          result.write('\n');
+          _writeIndent(result, indentLevel);
+          i++;
+          continue;
+        }
+
+        // Check if this is INSERT Column List
+        if (inInsertMode) {
+          inInsertColumns = true;
+          result.write('(');
+          indentLevel++;
+          result.write('\n');
+          _writeIndent(result, indentLevel);
+          i++;
+          continue;
+        }
+
         // 普通括号 - 追踪深度
         parenDepth++;
         result.write('(');
@@ -292,13 +365,23 @@ class _SqlFormatToolState extends State<SqlFormatTool> {
             nextUpper != null &&
             (nextUpper == 'AS' ||
                 (!_keywords.contains(nextUpper) &&
-                    !{'(', ')', ',', '.'}.contains(next)))) {
+                    !{'(', ')', ',', '.', '='}.contains(next)))) {
           subqueryDepth--;
           indentLevel--;
           if (indentLevel < 0) indentLevel = 0;
           result.write('\n');
           _writeIndent(result, indentLevel);
           result.write(')');
+        } else if (inInsertColumns || inInsertValues) {
+          // Special handling for INSERT/VALUES parenthesis
+          indentLevel--;
+          if (indentLevel < 0) indentLevel = 0;
+          result.write('\n');
+          _writeIndent(result, indentLevel);
+          result.write(')');
+          if (inInsertColumns) inInsertColumns = false;
+          // If next is not comma, we are leaving the values list
+          if (inInsertValues && next != ',') inInsertValues = false;
         } else {
           // 普通括号
           if (parenDepth > 0) parenDepth--;
@@ -315,6 +398,11 @@ class _SqlFormatToolState extends State<SqlFormatTool> {
         if (inSelectColumns && funcDepth == 0) {
           result.write('\n');
           _writeIndent(result, indentLevel);
+        } else if ((inInsertColumns || inInsertValues || inUpdateSet) &&
+            funcDepth == 0) {
+          // Newline for INSERT cols, VALUES, UPDATE SET
+          result.write('\n');
+          _writeIndent(result, indentLevel);
         }
         i++;
         continue;
@@ -323,6 +411,13 @@ class _SqlFormatToolState extends State<SqlFormatTool> {
       // ========== AS ==========
       if (upper == 'AS') {
         result.write(' AS ');
+        i++;
+        continue;
+      }
+
+      // ========== Equals ==========
+      if (token == '=') {
+        result.write(' = ');
         i++;
         continue;
       }
@@ -339,6 +434,7 @@ class _SqlFormatToolState extends State<SqlFormatTool> {
           token != ',' &&
           token != ')' &&
           token != '.' &&
+          token != '=' &&
           !token.startsWith('.');
 
       if (needsSpace) {
@@ -424,7 +520,7 @@ class _SqlFormatToolState extends State<SqlFormatTool> {
         continue;
       }
 
-      if ('(),.'.contains(char)) {
+      if ('(),.='.contains(char)) {
         if (current.isNotEmpty) {
           tokens.add(current.toString());
           current.clear();
