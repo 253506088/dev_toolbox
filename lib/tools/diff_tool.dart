@@ -25,6 +25,7 @@ class _DiffToolState extends State<DiffTool> {
   final FocusNode _diffFocusNode = FocusNode();
   final FocusNode _leftInputFocusNode = FocusNode();
   final FocusNode _rightInputFocusNode = FocusNode();
+  final FocusNode _searchFocusNode = FocusNode();
 
   // Search State
   bool _showFindBar = false;
@@ -586,6 +587,16 @@ class _DiffToolState extends State<DiffTool> {
         _searchQuery = '';
         _diffMatches = [];
         _inputMatches = [];
+        // Restore focus to active controller if usually searching there
+        if (_activeSearchController == _leftController) {
+          _leftInputFocusNode.requestFocus();
+        } else if (_activeSearchController == _rightController) {
+          _rightInputFocusNode.requestFocus();
+        }
+      } else {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _searchFocusNode.requestFocus();
+        });
       }
     });
   }
@@ -606,6 +617,7 @@ class _DiffToolState extends State<DiffTool> {
             children: [
               if (_showFindBar)
                 FindBar(
+                  focusNode: _searchFocusNode,
                   onChanged: _onSearchChanged,
                   onNext: _onSearchNext,
                   onPrevious: _onSearchPrevious,

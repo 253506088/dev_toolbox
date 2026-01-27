@@ -20,6 +20,8 @@ class _SqlInFormatterToolState extends State<SqlInFormatterTool> {
   final ScrollController _outputScrollController = ScrollController();
   final FocusNode _inputFocusNode = FocusNode();
   final FocusNode _outputFocusNode = FocusNode();
+  final FocusNode _searchFocusNode =
+      FocusNode(); // Dedicated focus node for search
 
   // Search State
   bool _showFindBar = false;
@@ -212,9 +214,18 @@ class _SqlInFormatterToolState extends State<SqlInFormatterTool> {
         } else {
           _activeSearchController = _inputController;
         }
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _searchFocusNode.requestFocus();
+        });
       } else {
         _searchQuery = '';
         _matches = [];
+        // Restore focus to active controller if possible
+        if (_activeSearchController == _outputController) {
+          _outputFocusNode.requestFocus();
+        } else {
+          _inputFocusNode.requestFocus();
+        }
       }
     });
   }
@@ -227,6 +238,7 @@ class _SqlInFormatterToolState extends State<SqlInFormatterTool> {
     _outputScrollController.dispose();
     _inputFocusNode.dispose();
     _outputFocusNode.dispose();
+    _searchFocusNode.dispose();
     super.dispose();
   }
 
@@ -246,6 +258,7 @@ class _SqlInFormatterToolState extends State<SqlInFormatterTool> {
               Padding(
                 padding: const EdgeInsets.only(bottom: 8.0),
                 child: FindBar(
+                  focusNode: _searchFocusNode,
                   onChanged: _onSearchChanged,
                   onNext: _onSearchNext,
                   onPrevious: _onSearchPrevious,

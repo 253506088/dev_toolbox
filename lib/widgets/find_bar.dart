@@ -59,6 +59,7 @@ class _FindBarState extends State<FindBar> {
                 isDense: true,
                 contentPadding: EdgeInsets.symmetric(vertical: 8),
               ),
+              autofocus: true,
               onChanged: widget.onChanged,
               onSubmitted: (_) => widget.onNext(), // Enter goes to next
               textInputAction: TextInputAction.next,

@@ -15,12 +15,18 @@ class _SqlFormatToolState extends State<SqlFormatTool> {
   final SearchTextEditingController _controller = SearchTextEditingController();
   final ScrollController _scrollController = ScrollController();
   final FocusNode _focusNode = FocusNode();
+  final FocusNode _searchFocusNode = FocusNode();
 
   // Search State
   bool _showFindBar = false;
   String _searchQuery = '';
   List<TextRange> _matches = [];
   int _currentMatchIndex = 0;
+
+  void _clear() {
+    _controller.clear();
+    setState(() {});
+  }
 
   static final Set<String> _keywords = {
     'SELECT',
@@ -556,16 +562,12 @@ class _SqlFormatToolState extends State<SqlFormatTool> {
     );
   }
 
-  void _clear() {
-    _controller.clear();
-    setState(() {});
-  }
-
   @override
   void dispose() {
     _controller.dispose();
     _scrollController.dispose();
     _focusNode.dispose();
+    _searchFocusNode.dispose();
     super.dispose();
   }
 
@@ -688,6 +690,11 @@ class _SqlFormatToolState extends State<SqlFormatTool> {
       if (!_showFindBar) {
         _searchQuery = '';
         _matches = [];
+        _focusNode.requestFocus();
+      } else {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _searchFocusNode.requestFocus();
+        });
       }
     });
   }
@@ -708,6 +715,7 @@ class _SqlFormatToolState extends State<SqlFormatTool> {
               Padding(
                 padding: const EdgeInsets.only(bottom: 8.0),
                 child: FindBar(
+                  focusNode: _searchFocusNode,
                   onChanged: _onSearchChanged,
                   onNext: _onSearchNext,
                   onPrevious: _onSearchPrevious,

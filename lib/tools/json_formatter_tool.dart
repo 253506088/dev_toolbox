@@ -16,6 +16,8 @@ class _JsonFormatterToolState extends State<JsonFormatterTool> {
   final SearchTextEditingController _controller = SearchTextEditingController();
   final ScrollController _scrollController = ScrollController();
   final FocusNode _focusNode = FocusNode();
+  final FocusNode _searchFocusNode =
+      FocusNode(); // Dedicated focus node for search
   String _errorText = '';
 
   // Search State
@@ -141,6 +143,7 @@ class _JsonFormatterToolState extends State<JsonFormatterTool> {
     _controller.dispose();
     _scrollController.dispose();
     _focusNode.dispose();
+    _searchFocusNode.dispose();
     super.dispose();
   }
 
@@ -232,6 +235,13 @@ class _JsonFormatterToolState extends State<JsonFormatterTool> {
       if (!_showFindBar) {
         _searchQuery = '';
         _matches = [];
+        // Optional: Return focus to content when closing
+        _focusNode.requestFocus();
+      } else {
+        // Request focus for search bar after frame build
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _searchFocusNode.requestFocus();
+        });
       }
     });
   }
@@ -251,6 +261,7 @@ class _JsonFormatterToolState extends State<JsonFormatterTool> {
               Padding(
                 padding: const EdgeInsets.only(bottom: 8.0),
                 child: FindBar(
+                  focusNode: _searchFocusNode,
                   onChanged: _onSearchChanged,
                   onNext: _onSearchNext,
                   onPrevious: _onSearchPrevious,
