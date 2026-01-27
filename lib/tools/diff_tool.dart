@@ -30,6 +30,8 @@ class _DiffToolState extends State<DiffTool> {
   // Search State
   bool _showFindBar = false;
   String _searchQuery = '';
+  // Fix: Add Case Sensitivity State
+  bool _isCaseSensitive = true;
   List<DiffSearchMatch> _diffMatches = [];
   int _currentDiffMatchIndex = 0;
 
@@ -499,12 +501,18 @@ class _DiffToolState extends State<DiffTool> {
     String text = controller.text;
     if (text.isEmpty) return;
 
-    int index = text.indexOf(_searchQuery);
+    String targetText = text;
+    String query = _searchQuery;
+
+    if (!_isCaseSensitive) {
+      targetText = targetText.toLowerCase();
+      query = query.toLowerCase();
+    }
+
+    int index = targetText.indexOf(query);
     while (index != -1) {
-      _inputMatches.add(
-        TextRange(start: index, end: index + _searchQuery.length),
-      );
-      index = text.indexOf(_searchQuery, index + 1);
+      _inputMatches.add(TextRange(start: index, end: index + query.length));
+      index = targetText.indexOf(query, index + 1);
     }
 
     if (_inputMatches.isNotEmpty) {
@@ -514,15 +522,26 @@ class _DiffToolState extends State<DiffTool> {
 
   void _searchInDiff() {
     _diffMatches = [];
+
+    String query = _searchQuery;
+    if (!_isCaseSensitive) {
+      query = query.toLowerCase();
+    }
+
     // Search in aligned lines
     // We search both left and right visible text
     for (int i = 0; i < _leftLines.length; i++) {
       String leftText = _leftLines[i].text;
       String rightText = _rightLines[i].text;
 
+      if (!_isCaseSensitive) {
+        leftText = leftText.toLowerCase();
+        rightText = rightText.toLowerCase();
+      }
+
       // Simple search: check if query exists in left or right
       // If found, add as a match point (index)
-      if (leftText.contains(_searchQuery) || rightText.contains(_searchQuery)) {
+      if (leftText.contains(query) || rightText.contains(query)) {
         _diffMatches.add(DiffSearchMatch(lineIndex: i));
       }
     }
@@ -895,11 +914,20 @@ class _DiffToolState extends State<DiffTool> {
                       bgColor = Colors.grey.shade100;
                     }
 
+                    // Check if this line is the current active match
+                    bool isCurrentMatch = false;
+                    if (_diffMatches.isNotEmpty &&
+                        _currentDiffMatchIndex < _diffMatches.length) {
+                      isCurrentMatch =
+                          _diffMatches[_currentDiffMatchIndex].lineIndex ==
+                          index;
+                    }
+
                     return Container(
                       color: bgColor,
                       padding: const EdgeInsets.symmetric(horizontal: 4),
                       alignment: Alignment.centerLeft,
-                      child: _buildLineContent(line, isLeft),
+                      child: _buildLineContent(line, isLeft, isCurrentMatch),
                     );
                   },
                 ),
@@ -912,7 +940,7 @@ class _DiffToolState extends State<DiffTool> {
   }
 
   /// 构建行内容，支持行内差异高亮
-  Widget _buildLineContent(DiffLine line, bool isLeft) {
+  Widget _buildLineContent(DiffLine line, bool isLeft, bool isCurrentMatch) {
     if ((line.type != DiffType.modified || line.segments.isEmpty) &&
         _searchQuery.isEmpty) {
       // 非修改行且无搜索，直接显示文本
@@ -924,10 +952,11 @@ class _DiffToolState extends State<DiffTool> {
 
     if (line.type != DiffType.modified && _searchQuery.isNotEmpty) {
       // 纯文本行的搜索高亮
-      return _buildHighlightedText(line.text, isLeft);
+      return _buildHighlightedText(line.text, isLeft, isCurrentMatch);
     }
 
     // 修改行：用 RichText 渲染 segments
+    // TODO: 目前修改行不支持搜索高亮，如果需要支持需要更复杂的逻辑
     List<InlineSpan> spans = [];
     for (var segment in line.segments) {
       if (segment.isChanged) {
@@ -948,7 +977,7 @@ class _DiffToolState extends State<DiffTool> {
           ),
         );
       } else {
-        // 相同部分：正常显示
+        // 相同部分：正常显示 (这里也可以尝试加高亮，暂略)
         spans.add(
           TextSpan(
             text: segment.text,
@@ -960,6 +989,86 @@ class _DiffToolState extends State<DiffTool> {
           ),
         );
       }
+    }
+
+    return RichText(text: TextSpan(children: spans));
+  }
+
+  Widget _buildHighlightedText(String text, bool isLeft, bool isCurrentMatch) {
+    if (_searchQuery.isEmpty) {
+      return Text(
+        text,
+        style: const TextStyle(fontSize: 13, fontFamily: 'Consolas'),
+      );
+    }
+
+    // Perform case-insensitive search if needed
+    String targetText = text;
+    String query = _searchQuery;
+    if (!_isCaseSensitive) {
+      targetText = targetText.toLowerCase();
+      query = query.toLowerCase();
+    }
+
+    if (!targetText.contains(query)) {
+      return Text(
+        text,
+        style: const TextStyle(fontSize: 13, fontFamily: 'Consolas'),
+      );
+    }
+
+    List<InlineSpan> spans = [];
+    int start = 0;
+    int index = targetText.indexOf(query);
+
+    while (index != -1) {
+      if (index > start) {
+        spans.add(
+          TextSpan(
+            text: text.substring(start, index),
+            style: const TextStyle(
+              fontSize: 13,
+              fontFamily: 'Consolas',
+              color: Colors.black87,
+            ),
+          ),
+        );
+      }
+      // Highlight
+      Color highlightColor = isCurrentMatch
+          ? Colors.blue.withOpacity(0.6)
+          : Colors.yellow;
+
+      spans.add(
+        WidgetSpan(
+          child: Container(
+            color: highlightColor,
+            child: Text(
+              text.substring(index, index + _searchQuery.length),
+              style: const TextStyle(
+                fontSize: 13,
+                fontFamily: 'Consolas',
+                color: Colors.black,
+              ),
+            ),
+          ),
+        ),
+      );
+      start = index + _searchQuery.length;
+      index = targetText.indexOf(query, start);
+    }
+
+    if (start < text.length) {
+      spans.add(
+        TextSpan(
+          text: text.substring(start),
+          style: const TextStyle(
+            fontSize: 13,
+            fontFamily: 'Consolas',
+            color: Colors.black87,
+          ),
+        ),
+      );
     }
 
     return RichText(text: TextSpan(children: spans));
@@ -1024,66 +1133,6 @@ class _DiffToolState extends State<DiffTool> {
         },
       ),
     );
-  }
-
-  Widget _buildHighlightedText(String text, bool isLeft) {
-    if (_searchQuery.isEmpty || !text.contains(_searchQuery)) {
-      return Text(
-        text,
-        style: const TextStyle(fontSize: 13, fontFamily: 'Consolas'),
-      );
-    }
-
-    List<InlineSpan> spans = [];
-    int start = 0;
-    int index = text.indexOf(_searchQuery);
-
-    while (index != -1) {
-      if (index > start) {
-        spans.add(
-          TextSpan(
-            text: text.substring(start, index),
-            style: const TextStyle(
-              fontSize: 13,
-              fontFamily: 'Consolas',
-              color: Colors.black87,
-            ),
-          ),
-        );
-      }
-      spans.add(
-        WidgetSpan(
-          child: Container(
-            color: Colors.yellow,
-            child: Text(
-              text.substring(index, index + _searchQuery.length),
-              style: const TextStyle(
-                fontSize: 13,
-                fontFamily: 'Consolas',
-                color: Colors.black,
-              ),
-            ),
-          ),
-        ),
-      );
-      start = index + _searchQuery.length;
-      index = text.indexOf(_searchQuery, start);
-    }
-
-    if (start < text.length) {
-      spans.add(
-        TextSpan(
-          text: text.substring(start),
-          style: const TextStyle(
-            fontSize: 13,
-            fontFamily: 'Consolas',
-            color: Colors.black87,
-          ),
-        ),
-      );
-    }
-
-    return RichText(text: TextSpan(children: spans));
   }
 }
 

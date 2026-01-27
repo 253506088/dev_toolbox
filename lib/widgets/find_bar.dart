@@ -9,6 +9,9 @@ class FindBar extends StatefulWidget {
   final int totalMatches;
   final FocusNode? focusNode;
 
+  final ValueChanged<bool>? onMatchCaseChanged;
+  final bool matchCase;
+
   const FindBar({
     super.key,
     required this.onChanged,
@@ -18,6 +21,8 @@ class FindBar extends StatefulWidget {
     this.currentMatch = 0,
     this.totalMatches = 0,
     this.focusNode,
+    this.onMatchCaseChanged,
+    this.matchCase = true,
   });
 
   @override
@@ -65,6 +70,28 @@ class _FindBarState extends State<FindBar> {
               textInputAction: TextInputAction.next,
             ),
           ),
+
+          // Match Case Toggle
+          if (widget.onMatchCaseChanged != null)
+            IconButton(
+              icon: const Icon(Icons.text_format), // Aa icon usually
+              // Or better yet, a custom text icon if Material doesn't have a perfect "Aa"
+              // Material Icons doesn't have a standard "Aa" case sensitive icon.
+              // 'text_fields' or 'format_size' might be close, but 'abc' is explicit.
+              // Let's use 'sort_by_alpha' or just Text widget if needed, but Icon is better.
+              // 'abc' icon is available in newer Flutter.
+              // Let's us a simple toggle style.
+              isSelected: widget.matchCase,
+              selectedIcon: const Icon(Icons.abc, color: Colors.blue),
+              // Material 3 Icon Button supports selection.
+              // If not Material 3, we manually handle color.
+              color: widget.matchCase ? Colors.blue : Colors.grey,
+              onPressed: () => widget.onMatchCaseChanged!(!widget.matchCase),
+              tooltip: '区分大小写',
+              constraints: const BoxConstraints(),
+              padding: const EdgeInsets.all(8),
+              iconSize: 20,
+            ),
 
           // Count (e.g., 1/5)
           if (widget.totalMatches > 0)

@@ -20,6 +20,8 @@ class _SqlFormatToolState extends State<SqlFormatTool> {
   // Search State
   bool _showFindBar = false;
   String _searchQuery = '';
+  // Fix: Definition of _isCaseSensitive
+  bool _isCaseSensitive = true;
   List<TextRange> _matches = [];
   int _currentMatchIndex = 0;
 
@@ -579,7 +581,7 @@ class _SqlFormatToolState extends State<SqlFormatTool> {
     });
 
     // Update highlighter
-    _controller.setSearchQuery(query);
+    _controller.setSearchQuery(query, isCaseSensitive: _isCaseSensitive);
 
     if (query.isEmpty) return;
     _performSearch();
@@ -590,15 +592,30 @@ class _SqlFormatToolState extends State<SqlFormatTool> {
     String text = _controller.text;
     if (text.isEmpty) return;
 
-    int index = text.indexOf(_searchQuery);
+    String targetText = text;
+    String query = _searchQuery;
+
+    if (!_isCaseSensitive) {
+      targetText = targetText.toLowerCase();
+      query = query.toLowerCase();
+    }
+
+    int index = targetText.indexOf(query);
     while (index != -1) {
-      _matches.add(TextRange(start: index, end: index + _searchQuery.length));
-      index = text.indexOf(_searchQuery, index + 1);
+      _matches.add(TextRange(start: index, end: index + query.length));
+      index = targetText.indexOf(query, index + 1);
     }
 
     if (_matches.isNotEmpty) {
       _scrollToMatch(0);
     }
+  }
+
+  void _onMatchCaseChanged(bool value) {
+    setState(() {
+      _isCaseSensitive = value;
+    });
+    _onSearchChanged(_searchQuery);
   }
 
   void _onSearchNext() {
@@ -722,6 +739,8 @@ class _SqlFormatToolState extends State<SqlFormatTool> {
                   onClose: () => setState(() => _showFindBar = false),
                   currentMatch: _matches.isEmpty ? 0 : _currentMatchIndex + 1,
                   totalMatches: _matches.length,
+                  matchCase: _isCaseSensitive,
+                  onMatchCaseChanged: _onMatchCaseChanged,
                 ),
               ),
             Wrap(

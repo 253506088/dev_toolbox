@@ -26,6 +26,8 @@ class _SqlInFormatterToolState extends State<SqlInFormatterTool> {
   // Search State
   bool _showFindBar = false;
   String _searchQuery = '';
+  // Fix: Add Case Sensitivity State
+  bool _isCaseSensitive = true;
   List<TextRange> _matches = [];
   int _currentMatchIndex = 0;
   TextEditingController? _activeSearchController;
@@ -103,8 +105,9 @@ class _SqlInFormatterToolState extends State<SqlInFormatterTool> {
       _currentMatchIndex = 0;
     });
 
-    _inputController.setSearchQuery(query);
-    _outputController.setSearchQuery(query);
+    // Pass case sensitivity to controllers
+    _inputController.setSearchQuery(query, isCaseSensitive: _isCaseSensitive);
+    _outputController.setSearchQuery(query, isCaseSensitive: _isCaseSensitive);
 
     if (query.isEmpty) return;
 
@@ -124,15 +127,30 @@ class _SqlInFormatterToolState extends State<SqlInFormatterTool> {
     String text = _activeSearchController!.text;
     if (text.isEmpty) return;
 
-    int index = text.indexOf(_searchQuery);
+    String targetText = text;
+    String query = _searchQuery;
+
+    if (!_isCaseSensitive) {
+      targetText = targetText.toLowerCase();
+      query = query.toLowerCase();
+    }
+
+    int index = targetText.indexOf(query);
     while (index != -1) {
-      _matches.add(TextRange(start: index, end: index + _searchQuery.length));
-      index = text.indexOf(_searchQuery, index + 1);
+      _matches.add(TextRange(start: index, end: index + query.length));
+      index = targetText.indexOf(query, index + 1);
     }
 
     if (_matches.isNotEmpty) {
       _scrollToMatch(0);
     }
+  }
+
+  void _onMatchCaseChanged(bool value) {
+    setState(() {
+      _isCaseSensitive = value;
+    });
+    _onSearchChanged(_searchQuery);
   }
 
   void _onSearchNext() {
@@ -265,6 +283,9 @@ class _SqlInFormatterToolState extends State<SqlInFormatterTool> {
                   onClose: () => setState(() => _showFindBar = false),
                   currentMatch: _matches.isEmpty ? 0 : _currentMatchIndex + 1,
                   totalMatches: _matches.length,
+                  // Fix: Connect to FindBar
+                  matchCase: _isCaseSensitive,
+                  onMatchCaseChanged: _onMatchCaseChanged,
                 ),
               ),
             // Toolbar

@@ -5,15 +5,17 @@ class SearchTextEditingController extends TextEditingController {
   String _searchQuery = '';
   List<TextRange> _matches = [];
 
-  Color matchColor = Colors.yellow.withOpacity(0.5);
-  Color currentMatchColor = Colors.orange.withOpacity(0.5);
+  Color matchColor = Colors.yellow;
+  Color currentMatchColor = Colors.blue.withOpacity(0.6);
 
   // Current selected match index to highlight differently (optional)
   int _currentMatchIndex = -1;
+  bool _isCaseSensitive = true; // Default to true
 
-  void setSearchQuery(String query) {
-    if (_searchQuery == query) return;
+  void setSearchQuery(String query, {bool isCaseSensitive = true}) {
+    if (_searchQuery == query && _isCaseSensitive == isCaseSensitive) return;
     _searchQuery = query;
+    _isCaseSensitive = isCaseSensitive;
     _updateMatches();
     notifyListeners();
   }
@@ -28,10 +30,18 @@ class SearchTextEditingController extends TextEditingController {
     _matches = [];
     if (_searchQuery.isEmpty || text.isEmpty) return;
 
-    int index = text.indexOf(_searchQuery);
+    String targetText = text;
+    String query = _searchQuery;
+
+    if (!_isCaseSensitive) {
+      targetText = targetText.toLowerCase();
+      query = query.toLowerCase();
+    }
+
+    int index = targetText.indexOf(query);
     while (index != -1) {
-      _matches.add(TextRange(start: index, end: index + _searchQuery.length));
-      index = text.indexOf(_searchQuery, index + 1);
+      _matches.add(TextRange(start: index, end: index + query.length));
+      index = targetText.indexOf(query, index + 1);
     }
   }
 
