@@ -409,6 +409,13 @@ class _DiffToolState extends State<DiffTool> {
     if (_rightScrollController.hasClients) {
       _rightScrollController.jumpTo(offset);
     }
+    // Fix: Also scroll content controllers
+    if (_leftContentScrollController.hasClients) {
+      _leftContentScrollController.jumpTo(offset);
+    }
+    if (_rightContentScrollController.hasClients) {
+      _rightContentScrollController.jumpTo(offset);
+    }
 
     // Defer enabling sync slightly to ensure jump is processed
     Future.microtask(() {
