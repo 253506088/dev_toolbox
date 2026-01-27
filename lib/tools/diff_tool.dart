@@ -551,6 +551,13 @@ class _DiffToolState extends State<DiffTool> {
     }
   }
 
+  void _onMatchCaseChanged(bool value) {
+    setState(() {
+      _isCaseSensitive = value;
+    });
+    _onSearchChanged(_searchQuery);
+  }
+
   void _onSearchNext() {
     if (_activeSearchController != null) {
       if (_inputMatches.isEmpty) return;
@@ -656,6 +663,8 @@ class _DiffToolState extends State<DiffTool> {
                   totalMatches: _activeSearchController != null
                       ? _inputMatches.length
                       : _diffMatches.length,
+                  matchCase: _isCaseSensitive,
+                  onMatchCaseChanged: _onMatchCaseChanged,
                 ),
               if (_showFindBar) const SizedBox(height: 8),
               // Input area
