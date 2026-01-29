@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:dev_toolbox/tools/sql_in_formatter_tool.dart';
 import 'package:dev_toolbox/tools/sql_format_tool.dart';
 import 'package:dev_toolbox/tools/json_formatter_tool.dart';
@@ -14,11 +15,17 @@ import 'package:dev_toolbox/tools/sticky_note_tool.dart';
 import 'package:dev_toolbox/theme/app_theme.dart';
 import 'package:dev_toolbox/constants/app_colors.dart';
 import 'package:dev_toolbox/widgets/neo_block.dart';
+import 'package:dev_toolbox/services/theme_service.dart';
 
 import 'package:url_launcher/url_launcher.dart';
 
 void main() {
-  runApp(const DevToolboxApp());
+  runApp(
+    ChangeNotifierProvider(
+      create: (_) => ThemeService(),
+      child: const DevToolboxApp(),
+    ),
+  );
 }
 
 class DevToolboxApp extends StatelessWidget {
@@ -26,9 +33,12 @@ class DevToolboxApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Watch ThemeService
+    final themeService = context.watch<ThemeService>();
+
     return MaterialApp(
       title: 'Dev Toolbox', // Updated title
-      theme: AppTheme.lightTheme, // Apply custom theme
+      theme: themeService.isNeo ? AppTheme.neoTheme : AppTheme.standardTheme,
       debugShowCheckedModeBanner: false,
       home: const MainWindow(),
     );
@@ -77,6 +87,7 @@ class _MainWindowState extends State<MainWindow> {
             padding: const EdgeInsets.fromLTRB(16, 16, 8, 16),
             child: NeoBlock(
               color: AppColors.surface,
+              stdShadows: const [], // No shadow in Standard mode
               // Make nav block slightly narrower if possible, but IntrinsicHeight handles it
               child: SingleChildScrollView(
                 child: IntrinsicHeight(
@@ -156,6 +167,26 @@ class _MainWindowState extends State<MainWindow> {
                             'GitHub',
                             style: Theme.of(context).textTheme.bodySmall,
                           ),
+                          const SizedBox(height: 16),
+
+                          // --- Theme Toggle Button ---
+                          IconButton(
+                            icon: Icon(
+                              context.watch<ThemeService>().isNeo
+                                  ? Icons.style
+                                  : Icons.style_outlined,
+                              color: AppColors.primary,
+                            ),
+                            tooltip: 'Switch Style',
+                            onPressed: () {
+                              context.read<ThemeService>().toggleTheme();
+                            },
+                          ),
+                          Text(
+                            context.watch<ThemeService>().isNeo ? 'Neo' : 'Std',
+                            style: Theme.of(context).textTheme.bodySmall,
+                          ),
+                          // ---------------------------
                         ],
                       ),
                     ),
