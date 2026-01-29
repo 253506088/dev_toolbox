@@ -11,6 +11,9 @@ import 'package:dev_toolbox/tools/cron_tool.dart';
 import 'package:dev_toolbox/tools/xml_json_tool.dart';
 import 'package:dev_toolbox/tools/diff_tool.dart';
 import 'package:dev_toolbox/tools/sticky_note_tool.dart';
+import 'package:dev_toolbox/theme/app_theme.dart';
+import 'package:dev_toolbox/constants/app_colors.dart';
+import 'package:dev_toolbox/widgets/neo_block.dart';
 
 import 'package:url_launcher/url_launcher.dart';
 
@@ -24,11 +27,9 @@ class DevToolboxApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: '开发者工具箱',
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
-        useMaterial3: true,
-      ),
+      title: 'Dev Toolbox', // Updated title
+      theme: AppTheme.lightTheme, // Apply custom theme
+      debugShowCheckedModeBanner: false,
       home: const MainWindow(),
     );
   }
@@ -68,89 +69,109 @@ class _MainWindowState extends State<MainWindow> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      // Background color is handled by Theme (scaffoldBackgroundColor)
       body: Row(
         children: [
-          SingleChildScrollView(
-            child: IntrinsicHeight(
-              child: NavigationRail(
-                selectedIndex: _selectedIndex,
-                onDestinationSelected: (int index) {
-                  setState(() {
-                    _selectedIndex = index;
-                  });
-                },
-                labelType: NavigationRailLabelType.all,
-                minWidth: 80,
-                destinations: const <NavigationRailDestination>[
-                  NavigationRailDestination(
-                    icon: Icon(Icons.sticky_note_2),
-                    label: Text('便签'),
-                  ),
-                  NavigationRailDestination(
-                    icon: Icon(Icons.compare_arrows),
-                    label: Text('Diff'),
-                  ),
-                  NavigationRailDestination(
-                    icon: Icon(Icons.format_list_bulleted),
-                    label: Text('SQL IN'),
-                  ),
-                  NavigationRailDestination(
-                    icon: Icon(Icons.code),
-                    label: Text('SQL格式化'),
-                  ),
-                  NavigationRailDestination(
-                    icon: Icon(Icons.data_object),
-                    label: Text('JSON'),
-                  ),
-                  NavigationRailDestination(
-                    icon: Icon(Icons.access_time),
-                    label: Text('Time'),
-                  ),
-                  NavigationRailDestination(
-                    icon: Icon(Icons.code_off),
-                    label: Text('Base64'),
-                  ),
-                  NavigationRailDestination(
-                    icon: Icon(Icons.security),
-                    label: Text('MD5'),
-                  ),
-                  NavigationRailDestination(
-                    icon: Icon(Icons.link),
-                    label: Text('URL'),
-                  ),
-                  NavigationRailDestination(
-                    icon: Icon(Icons.qr_code),
-                    label: Text('QR Code'),
-                  ),
-                  NavigationRailDestination(
-                    icon: Icon(Icons.schedule),
-                    label: Text('Cron'),
-                  ),
-                  NavigationRailDestination(
-                    icon: Icon(Icons.transform),
-                    label: Text('XML/JSON'),
-                  ),
-                ],
-                trailing: Padding(
-                  padding: const EdgeInsets.only(top: 20),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      IconButton(
-                        icon: const Icon(Icons.code),
-                        tooltip: 'GitHub',
-                        onPressed: _launchUrl,
+          // Navigation Rail Block (Neo-Brutalism Style)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 8, 16),
+            child: NeoBlock(
+              color: AppColors.surface,
+              // Make nav block slightly narrower if possible, but IntrinsicHeight handles it
+              child: SingleChildScrollView(
+                child: IntrinsicHeight(
+                  child: NavigationRail(
+                    backgroundColor: Colors.transparent,
+                    selectedIndex: _selectedIndex,
+                    onDestinationSelected: (int index) {
+                      setState(() {
+                        _selectedIndex = index;
+                      });
+                    },
+                    labelType: NavigationRailLabelType.all,
+                    minWidth: 72, // Compact
+                    destinations: const <NavigationRailDestination>[
+                      NavigationRailDestination(
+                        icon: Icon(Icons.sticky_note_2_outlined),
+                        selectedIcon: Icon(Icons.sticky_note_2),
+                        label: Text('Notes'),
                       ),
-                      const Text('GitHub'),
+                      NavigationRailDestination(
+                        icon: Icon(Icons.compare_arrows),
+                        label: Text('Diff'),
+                      ),
+                      NavigationRailDestination(
+                        icon: Icon(Icons.format_list_bulleted),
+                        label: Text('SQL IN'),
+                      ),
+                      NavigationRailDestination(
+                        icon: Icon(Icons.code),
+                        label: Text('SQL Fmt'),
+                      ),
+                      NavigationRailDestination(
+                        icon: Icon(Icons.data_object),
+                        label: Text('JSON'),
+                      ),
+                      NavigationRailDestination(
+                        icon: Icon(Icons.access_time),
+                        label: Text('Time'),
+                      ),
+                      NavigationRailDestination(
+                        icon: Icon(Icons.code_off),
+                        label: Text('Base64'),
+                      ),
+                      NavigationRailDestination(
+                        icon: Icon(Icons.security),
+                        label: Text('MD5'),
+                      ),
+                      NavigationRailDestination(
+                        icon: Icon(Icons.link),
+                        label: Text('URL'),
+                      ),
+                      NavigationRailDestination(
+                        icon: Icon(Icons.qr_code),
+                        label: Text('QR Code'),
+                      ),
+                      NavigationRailDestination(
+                        icon: Icon(Icons.schedule),
+                        label: Text('Cron'),
+                      ),
+                      NavigationRailDestination(
+                        icon: Icon(Icons.transform),
+                        label: Text('XML/JSON'),
+                      ),
                     ],
+                    trailing: Padding(
+                      padding: const EdgeInsets.only(top: 20, bottom: 20),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(
+                            icon: const Icon(Icons.code),
+                            tooltip: 'GitHub',
+                            onPressed: _launchUrl,
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            'GitHub',
+                            style: Theme.of(context).textTheme.bodySmall,
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
                 ),
               ),
             ),
           ),
-          const VerticalDivider(thickness: 1, width: 1),
+
+          // Content Block (Neo-Brutalism Style)
           Expanded(
-            child: IndexedStack(index: _selectedIndex, children: _tools),
+            child: NeoBlock(
+              margin: const EdgeInsets.fromLTRB(8, 16, 16, 16),
+              color: AppColors.surface, // White background for the tool area
+              child: IndexedStack(index: _selectedIndex, children: _tools),
+            ),
           ),
         ],
       ),
