@@ -1,5 +1,9 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/services.dart' show rootBundle;
+import 'package:flutter/foundation.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:translator/translator.dart';
 
 class SdTagService {
   static final SdTagService _instance = SdTagService._internal();
@@ -9,13 +13,16 @@ class SdTagService {
   SdTagService._internal();
 
   Map<String, String> _dict = {};
+  final Map<String, String> _newTranslations = {};
   bool _isLoaded = false;
+  final GoogleTranslator _translator = GoogleTranslator();
 
   /// Load dictionary from assets
   Future<void> loadDictionary() async {
     if (_isLoaded) return;
 
     try {
+      // 1. Load built-in assets
       final jsonString = await rootBundle.loadString(
         'assets/data/sd_tags.json',
       );
@@ -24,10 +31,15 @@ class SdTagService {
       _dict = jsonMap.map(
         (key, value) => MapEntry(key.toLowerCase(), value.toString()),
       );
+
+      // 2. Load local override/incremental if exists (OPTIONAL: logic to merge local changes on boot)
+      // For now, we just stick to the asset as base, but could expand to load 'sd_tags.json' from DocDir.
+      // Considering the user wants to manually managing exports, maybe better to just load asset.
+
       _isLoaded = true;
-      print('SdTagService: Loaded ${_dict.length} tags.');
+      debugPrint('SdTagService: Loaded ${_dict.length} tags.');
     } catch (e) {
-      print('SdTagService Error: Failed to load dictionary. $e');
+      debugPrint('SdTagService Error: Failed to load dictionary. $e');
       // Fallback to empty or base dict if needed
     }
   }
@@ -61,4 +73,85 @@ class SdTagService {
   String? getTranslation(String tag) {
     return _dict[tag.trim().toLowerCase()];
   }
+
+  // --- New Features ---
+
+  /// Translate a tag online and save it to local storage.
+  /// Returns the translated text if successful, or null.
+  Future<String?> translateAndSave(String tag) async {
+    final lowerTag = tag.trim().toLowerCase();
+
+    // 1. Check memory first
+    if (_dict.containsKey(lowerTag)) {
+      return _dict[lowerTag];
+    }
+
+    // 2. Online translate
+    try {
+      // Using 'auto' as source, 'zh-cn' as target
+      var translation = await _translator.translate(tag, to: 'zh-cn');
+      var translatedText = translation.text;
+
+      // Basic check to avoid bad translations or same text
+      if (translatedText.toLowerCase() == lowerTag || translatedText.isEmpty) {
+        return null;
+      }
+
+      // 3. Update memory
+      _dict[lowerTag] = translatedText;
+      _newTranslations[lowerTag] = translatedText;
+
+      // 4. Save to files
+      await _saveDictionaries();
+
+      return translatedText;
+    } catch (e) {
+      debugPrint('Translation error for $tag: $e');
+      return null;
+    }
+  }
+
+  Future<void> _saveDictionaries() async {
+    try {
+      final directory = await getApplicationDocumentsDirectory();
+
+      // Save Full Dictionary
+      final fullFile = File('${directory.path}/sd_tags.json');
+      // Sort keys for better readability if manually checking
+      final sortedFullKeys = _dict.keys.toList()..sort();
+      final Map<String, String> sortedFullDict = {
+        for (var k in sortedFullKeys) k: _dict[k]!,
+      };
+
+      // Use JsonEncoder with indentation for readability
+      const encoder = JsonEncoder.withIndent('  ');
+      await fullFile.writeAsString(encoder.convert(sortedFullDict));
+
+      // Save Incremental Dictionary
+      final incFile = File('${directory.path}/sd_tags_new.json');
+      final sortedIncKeys = _newTranslations.keys.toList()..sort();
+      final Map<String, String> sortedIncDict = {
+        for (var k in sortedIncKeys) k: _newTranslations[k]!,
+      };
+      await incFile.writeAsString(encoder.convert(sortedIncDict));
+
+      debugPrint('Saved full dictionary to: ${fullFile.absolute.path}');
+      debugPrint('Saved incremental dictionary to: ${incFile.absolute.path}');
+    } catch (e) {
+      debugPrint('Error saving dictionaries: $e');
+    }
+  }
+
+  /// Export incremental translations to a specific path
+  Future<void> exportIncremental(String savePath) async {
+    final file = File(savePath);
+    final sortedIncKeys = _newTranslations.keys.toList()..sort();
+    final Map<String, String> sortedIncDict = {
+      for (var k in sortedIncKeys) k: _newTranslations[k]!,
+    };
+    const encoder = JsonEncoder.withIndent('  ');
+    await file.writeAsString(encoder.convert(sortedIncDict));
+  }
+
+  int get newTranslationsCount => _newTranslations.length;
 }

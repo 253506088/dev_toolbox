@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:dev_toolbox/utils/sd_tags_service.dart';
 import 'package:dev_toolbox/widgets/neo_block.dart';
 import 'package:dev_toolbox/constants/app_colors.dart';
+import 'package:file_selector/file_selector.dart';
 
 class SdPromptTool extends StatefulWidget {
   const SdPromptTool({super.key});
@@ -231,6 +232,73 @@ class _SdPromptToolState extends State<SdPromptTool> {
     });
   }
 
+  Future<void> _translateUnknownTags() async {
+    // Find tags that don't have a translation
+    final unknownTags = _tags.where((tag) {
+      // Only translate "pure" tags, ignore parentheses groups for now as they are complex
+      if (tag.startsWith('(')) return false;
+      return _tagService.getTranslation(tag) == null;
+    }).toList();
+
+    if (unknownTags.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('没有需要翻译的标签 (已翻译或跳过分组)')));
+      }
+      return;
+    }
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('开始翻译 ${unknownTags.length} 个标签...')),
+    );
+
+    int count = 0;
+    for (final tag in unknownTags) {
+      final result = await _tagService.translateAndSave(tag);
+      if (result != null) {
+        count++;
+        // Refresh UI progressively
+        if (mounted) setState(() {});
+      }
+      // Small delay to be nice
+      await Future.delayed(const Duration(milliseconds: 100));
+    }
+
+    if (mounted) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('翻译完成，新增 $count 个翻译')));
+    }
+  }
+
+  Future<void> _exportDictionary() async {
+    if (_tagService.newTranslationsCount == 0) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('暂无新增翻译可导出')));
+      return;
+    }
+
+    // Using file_selector
+    final FileSaveLocation? result = await getSaveLocation(
+      suggestedName: 'sd_tags_new.json',
+      acceptedTypeGroups: [
+        const XTypeGroup(label: 'JSON', extensions: ['json']),
+      ],
+    );
+
+    if (result == null) return; // Cancelled
+
+    await _tagService.exportIncremental(result.path);
+
+    if (mounted) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('已导出到: ${result.path}')));
+    }
+  }
+
   String _getDisplayLabel(String tag) {
     // 1. Try direct exact match translation first
     final directTrans = _tagService.getTranslation(tag);
@@ -347,6 +415,18 @@ class _SdPromptToolState extends State<SdPromptTool> {
                     onPressed: _clearAll,
                     icon: const Icon(Icons.delete_outline),
                     label: const Text('清空'),
+                  ),
+                  const SizedBox(height: 8),
+                  OutlinedButton.icon(
+                    onPressed: _translateUnknownTags,
+                    icon: const Icon(Icons.translate),
+                    label: const Text('翻译未识别'),
+                  ),
+                  const SizedBox(height: 8),
+                  TextButton.icon(
+                    onPressed: _exportDictionary,
+                    icon: const Icon(Icons.save_alt),
+                    label: const Text('导出新增词典'),
                   ),
                 ],
               ),
