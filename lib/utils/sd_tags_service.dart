@@ -32,9 +32,26 @@ class SdTagService {
         (key, value) => MapEntry(key.toLowerCase(), value.toString()),
       );
 
-      // 2. Load local override/incremental if exists (OPTIONAL: logic to merge local changes on boot)
-      // For now, we just stick to the asset as base, but could expand to load 'sd_tags.json' from DocDir.
-      // Considering the user wants to manually managing exports, maybe better to just load asset.
+      // 2. Load local override/incremental if exists
+      try {
+        final directory = await getApplicationDocumentsDirectory();
+        final fullFile = File('${directory.path}/sd_tags.json');
+        if (await fullFile.exists()) {
+          final localString = await fullFile.readAsString();
+          final Map<String, dynamic> localMap = json.decode(localString);
+          final localDict = localMap.map(
+            (key, value) => MapEntry(key.toLowerCase(), value.toString()),
+          );
+
+          // Merge: Asset is base, Local overwrites/adds
+          _dict.addAll(localDict);
+          debugPrint(
+            'SdTagService: Loaded ${localDict.length} tags from local storage override.',
+          );
+        }
+      } catch (e) {
+        debugPrint('SdTagService Warning: Failed to load local overrides: $e');
+      }
 
       _isLoaded = true;
       debugPrint('SdTagService: Loaded ${_dict.length} tags.');
