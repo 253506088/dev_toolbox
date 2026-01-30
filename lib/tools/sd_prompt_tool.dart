@@ -14,6 +14,7 @@ class SdPromptTool extends StatefulWidget {
 
 class _SdPromptToolState extends State<SdPromptTool> {
   final TextEditingController _inputController = TextEditingController();
+  final TextEditingController _singleTagController = TextEditingController();
   final List<String> _tags = [];
   final SdTagService _tagService = SdTagService();
   bool _isLoadingDict = true;
@@ -380,53 +381,169 @@ class _SdPromptToolState extends State<SdPromptTool> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         // Top Control Area
+        // Top Control Area
         Padding(
           padding: const EdgeInsets.all(16.0),
-          child: Row(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Expanded(
-                child: TextField(
-                  controller: _inputController,
-                  maxLines: 3,
-                  minLines: 1,
-                  decoration: const InputDecoration(
-                    labelText: '输入提示词(逗号分隔)',
-                    border: OutlineInputBorder(),
-                    hintText: '例如: masterpiece, 1girl, white background...',
-                  ),
-                ),
+              // 1. Single Tag Search / Add
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  return RawAutocomplete<MapEntry<String, String>>(
+                    textEditingController: _singleTagController,
+                    focusNode:
+                        FocusNode(), // Manage focus if needed, or let widget create one
+                    optionsBuilder: (TextEditingValue textEditingValue) {
+                      if (textEditingValue.text.isEmpty) {
+                        return const Iterable<MapEntry<String, String>>.empty();
+                      }
+                      return _tagService.searchTags(textEditingValue.text);
+                    },
+                    displayStringForOption: (MapEntry<String, String> option) {
+                      return '${option.value} (${option.key})';
+                    },
+                    onSelected: (MapEntry<String, String> selection) {
+                      _addTagIfValid(selection.key, _tags);
+                      setState(() {});
+                      _singleTagController.clear(); // Clear after selection
+                    },
+                    optionsViewBuilder: (context, onSelected, options) {
+                      return Align(
+                        alignment: Alignment.topLeft,
+                        child: Material(
+                          elevation: 4.0,
+                          child: SizedBox(
+                            width: constraints.maxWidth,
+                            height: 300,
+                            child: ListView.builder(
+                              padding: EdgeInsets.zero,
+                              itemCount: options.length,
+                              itemBuilder: (BuildContext context, int index) {
+                                final option = options.elementAt(index);
+                                return ListTile(
+                                  title: Text(
+                                    '${option.value} (${option.key})',
+                                  ),
+                                  onTap: () {
+                                    onSelected(option);
+                                  },
+                                );
+                              },
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                    fieldViewBuilder:
+                        (
+                          context,
+                          textEditingController,
+                          focusNode,
+                          onFieldSubmitted,
+                        ) {
+                          return TextField(
+                            controller: textEditingController,
+                            focusNode: focusNode,
+                            decoration: const InputDecoration(
+                              labelText: '🔍 搜索/新增标签 (输入中文或英文)',
+                              hintText: '输入 "女孩" 或 "girl"... 回车翻译新词',
+                              border: OutlineInputBorder(),
+                              prefixIcon: Icon(Icons.search),
+                            ),
+                            onSubmitted: (value) async {
+                              if (value.trim().isEmpty) return;
+
+                              // Check exact match first
+                              final exactMatch = _tagService.getTranslation(
+                                value,
+                              );
+                              if (exactMatch != null) {
+                                _addTagIfValid(value, _tags);
+                                setState(() {});
+                                textEditingController.clear();
+                                // Keep focus?
+                                focusNode.requestFocus();
+                                return;
+                              }
+
+                              // Treat as new word
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('正在翻译并添加...'),
+                                  duration: Duration(milliseconds: 1000),
+                                ),
+                              );
+
+                              final translated = await _tagService
+                                  .translateAndSave(value);
+                              if (translated != null) {
+                                _addTagIfValid(translated, _tags);
+                                setState(() {});
+                                textEditingController.clear();
+                              } else {
+                                _addTagIfValid(value, _tags);
+                                setState(() {});
+                                textEditingController.clear();
+                              }
+                              focusNode.requestFocus();
+                            },
+                          );
+                        },
+                  );
+                },
               ),
-              const SizedBox(width: 16),
-              Column(
+              const SizedBox(height: 16),
+
+              // 2. Batch Input & Controls
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  ElevatedButton.icon(
-                    onPressed: _parseTags,
-                    icon: const Icon(Icons.transform),
-                    label: const Text('解析'),
-                    style: ElevatedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 24,
-                        vertical: 16,
+                  Expanded(
+                    child: TextField(
+                      controller: _inputController,
+                      maxLines: 3,
+                      minLines: 1,
+                      decoration: const InputDecoration(
+                        labelText: '批量输入提示词(逗号分隔)',
+                        border: OutlineInputBorder(),
+                        hintText: '例如: masterpiece, 1girl, white background...',
                       ),
                     ),
                   ),
-                  const SizedBox(height: 8),
-                  OutlinedButton.icon(
-                    onPressed: _clearAll,
-                    icon: const Icon(Icons.delete_outline),
-                    label: const Text('清空'),
-                  ),
-                  const SizedBox(height: 8),
-                  OutlinedButton.icon(
-                    onPressed: _translateUnknownTags,
-                    icon: const Icon(Icons.translate),
-                    label: const Text('翻译未识别'),
-                  ),
-                  const SizedBox(height: 8),
-                  TextButton.icon(
-                    onPressed: _exportDictionary,
-                    icon: const Icon(Icons.save_alt),
-                    label: const Text('导出新增词典'),
+                  const SizedBox(width: 16),
+                  Column(
+                    children: [
+                      ElevatedButton.icon(
+                        onPressed: _parseTags,
+                        icon: const Icon(Icons.transform),
+                        label: const Text('解析'),
+                        style: ElevatedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 24,
+                            vertical: 16,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      OutlinedButton.icon(
+                        onPressed: _clearAll,
+                        icon: const Icon(Icons.delete_outline),
+                        label: const Text('清空'),
+                      ),
+                      const SizedBox(height: 8),
+                      OutlinedButton.icon(
+                        onPressed: _translateUnknownTags,
+                        icon: const Icon(Icons.translate),
+                        label: const Text('翻译未识别'),
+                      ),
+                      const SizedBox(height: 8),
+                      TextButton.icon(
+                        onPressed: _exportDictionary,
+                        icon: const Icon(Icons.save_alt),
+                        label: const Text('导出新增词典'),
+                      ),
+                    ],
                   ),
                 ],
               ),

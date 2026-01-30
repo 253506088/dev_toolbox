@@ -94,34 +94,51 @@ class SdTagService {
   // --- New Features ---
 
   /// Translate a tag online and save it to local storage.
-  /// Returns the translated text if successful, or null.
+  /// Returns the English key if successful, or null.
   Future<String?> translateAndSave(String tag) async {
     final lowerTag = tag.trim().toLowerCase();
 
     // 1. Check memory first
     if (_dict.containsKey(lowerTag)) {
-      return _dict[lowerTag];
+      return lowerTag; // Return the key itself
     }
 
-    // 2. Online translate
+    // 2. Identify direction and translate
     try {
-      // Using 'auto' as source, 'zh-cn' as target
-      var translation = await _translator.translate(tag, to: 'zh-cn');
+      final bool isChinese = RegExp(r"[\u4e00-\u9fa5]").hasMatch(tag);
+      final String toLang = isChinese ? 'en' : 'zh-cn';
+
+      var translation = await _translator.translate(tag, to: toLang);
       var translatedText = translation.text;
 
-      // Basic check to avoid bad translations or same text
-      if (translatedText.toLowerCase() == lowerTag || translatedText.isEmpty) {
+      if (translatedText.isEmpty || translatedText.toLowerCase() == lowerTag) {
+        // Translation failed or same
+        // If it was Chinese and failed to translate, we probably don't want to add it as is?
+        // Or return null so UI handles it.
         return null;
       }
 
+      String englishKey;
+      String chineseValue;
+
+      if (isChinese) {
+        // Input: Chinese -> Output: English
+        englishKey = translatedText.toLowerCase();
+        chineseValue = tag;
+      } else {
+        // Input: English -> Output: Chinese
+        englishKey = lowerTag;
+        chineseValue = translatedText;
+      }
+
       // 3. Update memory
-      _dict[lowerTag] = translatedText;
-      _newTranslations[lowerTag] = translatedText;
+      _dict[englishKey] = chineseValue;
+      _newTranslations[englishKey] = chineseValue;
 
       // 4. Save to files
       await _saveDictionaries();
 
-      return translatedText;
+      return englishKey;
     } catch (e) {
       debugPrint('Translation error for $tag: $e');
       return null;
@@ -171,4 +188,44 @@ class SdTagService {
   }
 
   int get newTranslationsCount => _newTranslations.length;
+
+  /// Search for tags by English key or Chinese value
+  List<MapEntry<String, String>> searchTags(String query) {
+    if (query.isEmpty) return [];
+
+    final lowerQuery = query.toLowerCase();
+    final results = <MapEntry<String, String>>[];
+    int count = 0;
+
+    // A simple linear search on the map entries
+    // For 100k+ items this might be slow, but for typical SD tag dicts (few thousands) it's fine.
+    // If we need performance, we can cache a list of entries or use a Trie.
+    for (var entry in _dict.entries) {
+      if (count >= 50) break; // Limit results
+
+      final key = entry.key; // already lowercase
+      final value = entry.value; // translation
+
+      // Priority 1: Exact match (will be handled by "startswith" logic effectively)
+      // Priority 2: Starts with
+      // Priority 3: Contains
+
+      if (key.contains(lowerQuery) || value.contains(query)) {
+        results.add(entry);
+        count++;
+      }
+    }
+
+    // Sort to put "Starts with" matches first
+    results.sort((a, b) {
+      bool aStarts = a.key.startsWith(lowerQuery) || a.value.startsWith(query);
+      bool bStarts = b.key.startsWith(lowerQuery) || b.value.startsWith(query);
+
+      if (aStarts && !bStarts) return -1;
+      if (!aStarts && bStarts) return 1;
+      return 0; // Keep original order otherwise
+    });
+
+    return results;
+  }
 }
