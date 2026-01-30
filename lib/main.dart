@@ -12,6 +12,7 @@ import 'package:dev_toolbox/tools/cron_tool.dart';
 import 'package:dev_toolbox/tools/xml_json_tool.dart';
 import 'package:dev_toolbox/tools/diff_tool.dart';
 import 'package:dev_toolbox/tools/sticky_note_tool.dart';
+import 'package:dev_toolbox/tools/sd_prompt_tool.dart';
 import 'package:dev_toolbox/theme/app_theme.dart';
 import 'package:dev_toolbox/constants/app_colors.dart';
 import 'package:dev_toolbox/widgets/neo_block.dart';
@@ -68,6 +69,7 @@ class _MainWindowState extends State<MainWindow> {
     const QrTool(),
     const CronTool(),
     const XmlJsonTool(),
+    const SdPromptTool(),
   ];
   Future<void> _launchUrl() async {
     final Uri url = Uri.parse('https://github.com/253506088/dev_toolbox');
@@ -150,6 +152,10 @@ class _MainWindowState extends State<MainWindow> {
                       NavigationRailDestination(
                         icon: Icon(Icons.transform),
                         label: Text('XML/JSON'),
+                      ),
+                      NavigationRailDestination(
+                        icon: Icon(Icons.translate),
+                        label: Text('SD 提示词'),
                       ),
                     ],
                     trailing: Padding(
