@@ -36,29 +36,52 @@ class _SdPromptToolState extends State<SdPromptTool> {
     final text = _inputController.text;
     if (text.isEmpty) return;
 
-    // Split by comma
-    final rawTags = text.split(',');
+    List<String> newTags = [];
+    StringBuffer buffer = StringBuffer();
+    int parenthesisLevel = 0;
 
-    // Process tags
-    for (var rawTag in rawTags) {
-      // 1. Trim surrounding spaces
-      var tag = rawTag.trim();
+    for (int i = 0; i < text.length; i++) {
+      String char = text[i];
 
-      // 2. Skip empty
-      if (tag.isEmpty) continue;
-
-      // 3. Deduplicate (check if already exists)
-      if (!_tags.contains(tag)) {
-        setState(() {
-          _tags.add(tag);
-        });
+      if (char == '(') {
+        parenthesisLevel++;
+        buffer.write(char);
+      } else if (char == ')') {
+        if (parenthesisLevel > 0) parenthesisLevel--;
+        buffer.write(char);
+      } else if (char == ',') {
+        if (parenthesisLevel == 0) {
+          // Valid separator
+          _addTagIfValid(buffer.toString(), newTags);
+          buffer.clear();
+        } else {
+          // Comma inside parentheses, keep it
+          buffer.write(char);
+        }
+      } else {
+        buffer.write(char);
       }
     }
 
-    // Clear input after parsing? Maybe keep it?
-    // User flow: input -> parse -> list.
-    // Usually convenient to clear so they can paste more.
+    // Add remaining buffer
+    _addTagIfValid(buffer.toString(), newTags);
+
+    setState(() {
+      for (var tag in newTags) {
+        if (!_tags.contains(tag)) {
+          _tags.add(tag);
+        }
+      }
+    });
+
     _inputController.clear();
+  }
+
+  void _addTagIfValid(String raw, List<String> list) {
+    final tag = raw.trim();
+    if (tag.isNotEmpty) {
+      list.add(tag);
+    }
   }
 
   void _removeTag(int index) {
@@ -208,6 +231,77 @@ class _SdPromptToolState extends State<SdPromptTool> {
     });
   }
 
+  String _getDisplayLabel(String tag) {
+    // 1. Try direct exact match translation first
+    final directTrans = _tagService.getTranslation(tag);
+    if (directTrans != null) {
+      return '$tag ($directTrans)';
+    }
+
+    // 2. Handle Parentheses Grouping: (A, B, C) or (tag:1.2)
+    if (tag.startsWith('(') && tag.endsWith(')')) {
+      final innerContent = tag.substring(1, tag.length - 1);
+
+      // We need to split inner content by comma, but respect nested parentheses if any
+      // Re-use a simplified split logic or just split by comma if we assume 1 level depth mostly
+      // For robustness, let's just split by comma.
+      // If the user has ((A,B), C), split by comma gives: "(A", "B)", "C". This is bad.
+      // But for (A, B, C), it gives "A", "B", "C".
+      // Given the previous parser logic, we already grouped by top-level parens.
+      // So if we are here, we are inside one level of parens effectively (or more).
+
+      // Let's try to translate the components.
+      List<String> parts = [];
+      StringBuffer buffer = StringBuffer();
+      int pLevel = 0;
+      for (int i = 0; i < innerContent.length; i++) {
+        String char = innerContent[i];
+        if (char == '(') pLevel++;
+        if (char == ')') pLevel--;
+
+        if (char == ',' && pLevel == 0) {
+          parts.add(buffer.toString());
+          buffer.clear();
+        } else {
+          buffer.write(char);
+        }
+      }
+      if (buffer.isNotEmpty) parts.add(buffer.toString());
+
+      // Now translate each part
+      List<String> translatedParts = parts.map((part) {
+        String p = part.trim();
+        // Handle Recursive (nested parens)
+        if (p.startsWith('(') && p.endsWith(')')) {
+          return _getDisplayLabel(p);
+        }
+
+        // Handle weighting: tag:1.2 or tag:0.9
+        // A simple heuristic: split by last ':', if the second part is number check
+        // Or just strip weight, translate, append weight.
+        String core = p;
+        String suffix = '';
+        if (p.contains(':')) {
+          int lastIdx = p.lastIndexOf(':');
+          // check if string after : is likely a number
+          // This is just a visual helper, so loose check is fine
+          core = p.substring(0, lastIdx);
+          suffix = p.substring(lastIdx);
+        }
+
+        final trans = _tagService.getTranslation(core);
+        if (trans != null) {
+          return '$core ($trans)$suffix';
+        }
+        return p;
+      }).toList();
+
+      return '(${translatedParts.join(', ')})';
+    }
+
+    return tag;
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_isLoadingDict) {
@@ -280,29 +374,61 @@ class _SdPromptToolState extends State<SdPromptTool> {
                     runSpacing: 8.0,
                     children: List.generate(_tags.length, (index) {
                       final tag = _tags[index];
-                      // Get translation
-                      final translation = _tagService.getTranslation(tag);
-                      final displayLabel = translation != null
-                          ? '$tag ($translation)'
-                          : tag;
+                      final displayLabel = _getDisplayLabel(tag);
 
-                      return GestureDetector(
-                        onLongPress: () => _showTagOptions(
-                          index,
-                        ), // Long press for mobile feeling
-                        child: InputChip(
-                          label: Text(displayLabel),
-                          onDeleted: () => _removeTag(index),
-                          onPressed: () => _showTagOptions(index),
-                          deleteIconColor: Colors.red.shade300,
-                          backgroundColor: AppColors.primary.withOpacity(0.1),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
-                            side: BorderSide(
-                              color: AppColors.primary.withOpacity(0.2),
+                      return DragTarget<int>(
+                        onWillAccept: (data) => data != null && data != index,
+                        onAccept: (fromIndex) {
+                          setState(() {
+                            final item = _tags.removeAt(fromIndex);
+                            _tags.insert(index, item);
+                          });
+                        },
+                        builder: (context, candidateData, rejectedData) {
+                          return LongPressDraggable<int>(
+                            data: index,
+                            feedback: Material(
+                              elevation: 4.0,
+                              color: Colors.transparent,
+                              child: InputChip(
+                                label: Text(displayLabel),
+                                backgroundColor: AppColors.primary.withOpacity(
+                                  0.5,
+                                ),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                              ),
                             ),
-                          ),
-                        ),
+                            childWhenDragging: Opacity(
+                              opacity: 0.3,
+                              child: InputChip(
+                                label: Text(displayLabel),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                  side: BorderSide(
+                                    color: AppColors.primary.withOpacity(0.2),
+                                  ),
+                                ),
+                              ),
+                            ),
+                            child: InputChip(
+                              label: Text(displayLabel),
+                              onDeleted: () => _removeTag(index),
+                              onPressed: () => _showTagOptions(index),
+                              deleteIconColor: Colors.red.shade300,
+                              backgroundColor: AppColors.primary.withOpacity(
+                                0.1,
+                              ),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8),
+                                side: BorderSide(
+                                  color: AppColors.primary.withOpacity(0.2),
+                                ),
+                              ),
+                            ),
+                          );
+                        },
                       );
                     }),
                   ),
