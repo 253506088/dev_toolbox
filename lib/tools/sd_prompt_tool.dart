@@ -514,15 +514,21 @@ class _SdPromptToolState extends State<SdPromptTool> {
                   const SizedBox(width: 16),
                   Column(
                     children: [
-                      ElevatedButton.icon(
+                      ElevatedButton(
                         onPressed: _parseTags,
-                        icon: const Icon(Icons.transform),
-                        label: const Text('解析'),
                         style: ElevatedButton.styleFrom(
                           padding: const EdgeInsets.symmetric(
                             horizontal: 24,
                             vertical: 16,
                           ),
+                        ),
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.transform),
+                            SizedBox(width: 8),
+                            Text('解析'),
+                          ],
                         ),
                       ),
                       const SizedBox(height: 8),
