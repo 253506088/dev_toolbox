@@ -13,6 +13,7 @@ import 'package:dev_toolbox/tools/xml_json_tool.dart';
 import 'package:dev_toolbox/tools/diff_tool.dart';
 import 'package:dev_toolbox/tools/sticky_note_tool.dart';
 import 'package:dev_toolbox/tools/sd_prompt_tool.dart';
+import 'package:dev_toolbox/tools/pdf_hidden_text_tool.dart';
 import 'package:dev_toolbox/theme/app_theme.dart';
 import 'package:dev_toolbox/constants/app_colors.dart';
 import 'package:dev_toolbox/widgets/neo_block.dart';
@@ -70,6 +71,7 @@ class _MainWindowState extends State<MainWindow> {
     const CronTool(),
     const XmlJsonTool(),
     const SdPromptTool(),
+    const PdfHiddenTextTool(),
   ];
   Future<void> _launchUrl() async {
     final Uri url = Uri.parse('https://github.com/253506088/dev_toolbox');
@@ -156,6 +158,10 @@ class _MainWindowState extends State<MainWindow> {
                       NavigationRailDestination(
                         icon: Icon(Icons.translate),
                         label: Text('SD 提示词'),
+                      ),
+                      NavigationRailDestination(
+                        icon: Icon(Icons.visibility_off),
+                        label: Text('PDF 隐藏'),
                       ),
                     ],
                     trailing: Padding(
