@@ -184,54 +184,45 @@ class _WindowsFileManagerToolState extends State<WindowsFileManagerTool> {
               ? const Center(child: CircularProgressIndicator())
               : _error != null
                   ? Center(child: Text('Error: $_error', style: const TextStyle(color: Colors.red)))
-                  : Row(
-                      children: [
-                        // Left: List View
-                        Expanded(
-                          flex: 1,
-                          child: Container(
-                            decoration: const BoxDecoration(
-                              border: Border(right: BorderSide(color: Colors.grey, width: 0.5)),
-                            ),
-                            child: FileList(
-                              items: _items,
-                              onItemTap: _onItemTap,
-                              scrollController: _scrollController,
-                            ),
-                          ),
+                  : ResizableSplitView(
+                      initialRatio: 0.4,
+                      left: Container(
+                        decoration: const BoxDecoration(
+                          border: Border(right: BorderSide(color: Colors.grey, width: 0.5)),
                         ),
-                        // Right: Visualization (Treemap)
-                        Expanded(
-                          flex: 1,
-                          child: Container(
-                            color: Colors.white,
-                            padding: const EdgeInsets.all(8.0),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Padding(
-                                  padding: const EdgeInsets.only(bottom: 8.0),
-                                  child: Text(
-                                    'Space Visualization (${_items.length} items)',
-                                    style: const TextStyle(fontWeight: FontWeight.bold),
-                                  ),
-                                ),
-                                Expanded(
-                                  child: Container(
-                                    decoration: BoxDecoration(
-                                      border: Border.all(color: Colors.grey[300]!),
-                                    ),
-                                    child: TreemapWidget(
-                                      items: _items,
-                                      onItemTap: _onItemTap,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
+                        child: FileList(
+                          items: _items,
+                          onItemTap: _onItemTap,
+                          scrollController: _scrollController,
                         ),
-                      ],
+                      ),
+                      right: Container(
+                        color: Colors.white,
+                        padding: const EdgeInsets.all(8.0),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 8.0),
+                              child: Text(
+                                'Space Visualization (${_items.length} items)',
+                                style: const TextStyle(fontWeight: FontWeight.bold),
+                              ),
+                            ),
+                            Expanded(
+                              child: Container(
+                                decoration: BoxDecoration(
+                                  border: Border.all(color: Colors.grey[300]!),
+                                ),
+                                child: TreemapWidget(
+                                  items: _items,
+                                  onItemTap: _onItemTap,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                     ),
         ),
       ],
