@@ -34,7 +34,8 @@ class _WindowsFileManagerToolState extends State<WindowsFileManagerTool> {
   }
 
   Future<void> _loadPath(String path) async {
-    // Cancel previous context logically
+    // Cancel previous calculations
+    FolderSizeService.cancelPendingTasks();
     _calculatingPath = path;
 
     setState(() {
@@ -74,43 +75,35 @@ class _WindowsFileManagerToolState extends State<WindowsFileManagerTool> {
     }
   }
 
-  Future<void> _calculateFolderSizes(List<FileSystemItem> items, String pathContext) async {
+  void _calculateFolderSizes(List<FileSystemItem> items, String pathContext) {
     // Filter directories that need calculation
-    // Disks usually have total/free space already, so skip them
-    // Files have size already.
     final directories = items.where((i) => i.type == FileSystemType.directory).toList();
     
     if (directories.isEmpty) return;
 
-    // Process in parallel but limit concurrency?
-    // Or just fire them all? 'compute' spawns isolates, creating 100 isolates might be heavy.
-    // Let's do a pool or sequential for now to be safe, or chunks.
-    
+    // Fire all requests at once. The Service handles queuing and concurrency limit (3).
     for (final dir in directories) {
-      // If user navigated away, stop
+      // If user navigated away, stop submitting
       if (_calculatingPath != pathContext) return;
 
-      // Mark as calculating (optional, for UI spinner if we added one per item)
+      // Mark as calculating
       setState(() {
         dir.isCalculating = true;
       });
 
-      try {
-        final size = await FolderSizeService.calculateFolderSize(dir.path);
-        
-        if (mounted && _calculatingPath == pathContext) {
-          setState(() {
-            dir.size = size;
-            dir.isCalculating = false;
-          });
-        }
-      } catch (e) {
-        if (mounted && _calculatingPath == pathContext) {
-           setState(() {
-            dir.isCalculating = false;
-           });
-        }
-      }
+      // Fire and forget (let Service handle queuing)
+      FolderSizeService.calculateFolderSize(dir.path).then((size) {
+        if (!mounted || _calculatingPath != pathContext) return;
+        setState(() {
+          dir.size = size;
+          dir.isCalculating = false;
+        });
+      }).catchError((e) {
+        if (!mounted || _calculatingPath != pathContext) return;
+        setState(() {
+          dir.isCalculating = false;
+        });
+      });
     }
   }
 

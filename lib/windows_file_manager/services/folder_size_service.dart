@@ -8,7 +8,13 @@ class FolderSizeService {
   static int _activeIsolates = 0;
   static final List<_QueuedTask> _taskQueue = [];
 
-  /// Calculate folder size asynchronously using a limited pool of concurrent tasks
+  static void cancelPendingTasks() {
+    // Clear pending tasks
+    _taskQueue.clear();
+    // We cannot easily cancel running isolates via compute, 
+    // but clearing the queue prevents new ones from starting.
+  }
+
   static Future<int> calculateFolderSize(String path) {
     final completer = Completer<int>();
     _taskQueue.add(_QueuedTask(path, completer));
