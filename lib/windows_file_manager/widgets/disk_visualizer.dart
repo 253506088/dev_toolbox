@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import '../models.dart';
 
@@ -96,6 +97,26 @@ class TreemapWidget extends StatelessWidget {
   }
 
   Widget _buildTile(Rect rect, FileSystemItem item) {
+    // Calculate dynamic font sizes based on the smaller dimension of the rectangle
+    // User requested: current font size (10/8) as minimum, increasing as volume (box size) increases.
+    final double minDimension = math.min(rect.width, rect.height);
+    
+    // Name font size: min 10.0, max 60.0
+    double nameFontSize = math.max(10.0, minDimension / 8.0);
+    nameFontSize = math.min(nameFontSize, 60.0);
+    
+    // Size font size: min 8.0, max 40.0
+    double sizeFontSize = math.max(8.0, minDimension / 10.0);
+    sizeFontSize = math.min(sizeFontSize, 40.0);
+
+    // Truncate name logic as requested:
+    // "Allow wrapping, show full name if possible. Only truncate with ... if length > 50."
+    String displayName = item.name;
+    if (displayName.length > 50) {
+      // Truncate to 47 chars + "..." = 50 chars visual roughly
+      displayName = '${displayName.substring(0, 47)}...';
+    }
+
     return Positioned(
       left: rect.left,
       top: rect.top,
@@ -116,15 +137,24 @@ class TreemapWidget extends StatelessWidget {
               children: [
                 if (rect.height > 20 && rect.width > 40)
                   Text(
-                    item.name,
-                    style: const TextStyle(fontSize: 10, color: Colors.black87),
-                    overflow: TextOverflow.ellipsis,
-                    maxLines: 1,
+                    displayName,
+                    style: TextStyle(
+                      fontSize: nameFontSize, 
+                      color: Colors.black87,
+                      fontWeight: FontWeight.bold,
+                    ),
+                    textAlign: TextAlign.center,
+                    // Allow wrapping (default softWrap is true)
+                    // If text is truncated manually, it won't overflow excessively.
+                    // If text is short but font is large, wrapping might still overflow box height.
+                    // Set maxLines to something reasonable like 3 or 4 to use available vertical space without clipping weirdly.
+                    maxLines: 4, 
+                    overflow: TextOverflow.ellipsis, 
                   ),
                 if (rect.height > 35 && rect.width > 40)
                   Text(
                     item.sizeString,
-                    style: const TextStyle(fontSize: 8, color: Colors.black54),
+                    style: TextStyle(fontSize: sizeFontSize, color: Colors.black54),
                     overflow: TextOverflow.ellipsis,
                     maxLines: 1,
                   ),
