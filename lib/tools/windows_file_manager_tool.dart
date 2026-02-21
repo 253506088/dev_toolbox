@@ -172,6 +172,21 @@ class _WindowsFileManagerToolState extends State<WindowsFileManagerTool> {
                 child: Breadcrumbs(
                   path: _currentPath,
                   onPathSelected: _loadPath,
+                  onListSubdirectories: (path) async {
+                    try {
+                      if (path.isEmpty) {
+                        return await WindowsFileService.getDisks();
+                      }
+                      final items = await WindowsFileService.getFiles(path);
+                      // Sort directories: folders first, then alphabetical? 
+                      // Actually just directories are needed.
+                      final dirs = items.where((i) => i.type == FileSystemType.directory).toList();
+                      dirs.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+                      return dirs;
+                    } catch (e) {
+                      return [];
+                    }
+                  },
                 ),
               ),
             ],
