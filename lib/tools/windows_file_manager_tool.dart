@@ -116,11 +116,8 @@ class _WindowsFileManagerToolState extends State<WindowsFileManagerTool> {
 
   void _onItemTap(FileSystemItem item) {
     if (item.type == FileSystemType.file) {
-      // Open file? Or show details?
-      // For now, just show a snackbar or no-op
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Selected file: ${item.name}')),
-      );
+      // Do nothing for files as requested
+      return;
     } else {
       // Enter directory/disk
       // If it's a disk, path is "C:", we need "C:\" for Directory
