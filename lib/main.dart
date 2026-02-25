@@ -15,6 +15,7 @@ import 'package:dev_toolbox/tools/sticky_note_tool.dart';
 import 'package:dev_toolbox/tools/sd_prompt_tool.dart';
 import 'package:dev_toolbox/tools/pdf_hidden_text_tool.dart';
 import 'package:dev_toolbox/tools/windows_file_manager_tool.dart';
+import 'package:dev_toolbox/tools/excel_format_tool.dart';
 import 'package:dev_toolbox/theme/app_theme.dart';
 import 'package:dev_toolbox/constants/app_colors.dart';
 import 'package:dev_toolbox/widgets/neo_block.dart';
@@ -74,6 +75,7 @@ class _MainWindowState extends State<MainWindow> {
     const SdPromptTool(),
     const PdfHiddenTextTool(),
     const WindowsFileManagerTool(),
+    const ExcelFormatTool(),
   ];
   Future<void> _launchUrl() async {
     final Uri url = Uri.parse('https://github.com/253506088/dev_toolbox');
@@ -168,6 +170,10 @@ class _MainWindowState extends State<MainWindow> {
                       NavigationRailDestination(
                         icon: Icon(Icons.folder),
                         label: Text('Win文件'),
+                      ),
+                      NavigationRailDestination(
+                        icon: Icon(Icons.table_chart),
+                        label: Text('Excel'),
                       ),
                     ],
                     trailing: Padding(
