@@ -368,53 +368,53 @@ class _ExcelFormatToolState extends State<ExcelFormatTool> {
                         onPointerUp: (event) {
                           _stopScrolling();
                         },
+                        // 把负责上下滚动的 Scrollbar 提到最外层，它就会贴在屏幕最右边固定住
                         child: Scrollbar(
-                          controller: _horizontalScrollController,
+                          controller: _verticalScrollController,
                           thumbVisibility: true,
                           notificationPredicate: (notif) =>
-                              notif.depth == 0, // 最底层是横向
-                          child: SingleChildScrollView(
+                              notif.depth == 1, // 纵向现在被包在里面是深度1
+                          child: Scrollbar(
                             controller: _horizontalScrollController,
-                            scrollDirection: Axis.horizontal,
-                            child: ConstrainedBox(
-                              constraints: BoxConstraints(
-                                minWidth: constraints.maxWidth,
-                              ),
-                              child: Stack(
-                                children: [
-                                  // 底部全表（含表头，纵向可滚）
-                                  Padding(
-                                    padding: const EdgeInsets.all(8.0),
-                                    child: Scrollbar(
-                                      controller: _verticalScrollController,
-                                      thumbVisibility: true,
-                                      // 指定深度，防止污染横向
-                                      notificationPredicate: (notif) =>
-                                          notif.depth == 0,
+                            thumbVisibility: true,
+                            notificationPredicate: (notif) =>
+                                notif.depth == 0, // 外侧横向是深度0
+                            child: SingleChildScrollView(
+                              controller: _horizontalScrollController,
+                              scrollDirection: Axis.horizontal,
+                              child: ConstrainedBox(
+                                constraints: BoxConstraints(
+                                  minWidth: constraints.maxWidth,
+                                ),
+                                child: Stack(
+                                  children: [
+                                    // 底部全表（含表头，纵向可滚）
+                                    Padding(
+                                      padding: const EdgeInsets.all(8.0),
                                       child: SingleChildScrollView(
                                         controller: _verticalScrollController,
                                         scrollDirection: Axis.vertical,
                                         child: _buildDataTable(context),
                                       ),
                                     ),
-                                  ),
-                                  // 顶部粘性表头覆盖层（由于它放在Stack顶层且没有包裹进垂直滚动，
-                                  // 所以只会跟着外围水平滚动一起左右移动，而不会上下翻）
-                                  Positioned(
-                                    top: 8.0, // 与下方的 Padding 对齐
-                                    left: 8.0,
-                                    right: 8.0,
-                                    height: 56.0, // Flutter DataTable 的默认表头高度
-                                    child: ClipRect(
-                                      child: Container(
-                                        color: Theme.of(
-                                          context,
-                                        ).scaffoldBackgroundColor, // 防止滚动内容透视
-                                        child: _buildDataTable(context),
+                                    // 顶部粘性表头覆盖层（由于它放在Stack顶层且没有包裹进垂直滚动，
+                                    // 所以只会跟着外围水平滚动一起左右移动，而不会上下翻）
+                                    Positioned(
+                                      top: 8.0, // 与下方的 Padding 对齐
+                                      left: 8.0,
+                                      right: 8.0,
+                                      height: 56.0, // Flutter DataTable 的默认表头高度
+                                      child: ClipRect(
+                                        child: Container(
+                                          color: Theme.of(
+                                            context,
+                                          ).scaffoldBackgroundColor, // 防止滚动内容透视
+                                          child: _buildDataTable(context),
+                                        ),
                                       ),
                                     ),
-                                  ),
-                                ],
+                                  ],
+                                ),
                               ),
                             ),
                           ),
