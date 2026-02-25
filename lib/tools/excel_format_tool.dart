@@ -4,6 +4,8 @@ import 'package:flutter/services.dart';
 import 'package:dev_toolbox/widgets/neo_block.dart';
 import 'package:dev_toolbox/constants/app_colors.dart';
 
+enum SortState { none, ascending, descending }
+
 class ExcelFormatTool extends StatefulWidget {
   const ExcelFormatTool({super.key});
 
@@ -16,7 +18,11 @@ class _ExcelFormatToolState extends State<ExcelFormatTool> {
 
   List<String> _headers = [];
   List<List<String>> _rows = [];
+  List<List<String>> _originalRows = [];
   bool _ignoreEmptyHeader = true;
+
+  int? _sortColumnIndex;
+  SortState _sortState = SortState.none;
 
   final ScrollController _horizontalScrollController = ScrollController();
   final ScrollController _verticalScrollController = ScrollController();
@@ -134,6 +140,10 @@ class _ExcelFormatToolState extends State<ExcelFormatTool> {
       }
     }
 
+    _originalRows = _rows.map((e) => List<String>.from(e)).toList();
+    _sortColumnIndex = null;
+    _sortState = SortState.none;
+
     setState(() {});
   }
 
@@ -142,6 +152,9 @@ class _ExcelFormatToolState extends State<ExcelFormatTool> {
     setState(() {
       _headers = [];
       _rows = [];
+      _originalRows = [];
+      _sortColumnIndex = null;
+      _sortState = SortState.none;
     });
   }
 
@@ -190,6 +203,46 @@ class _ExcelFormatToolState extends State<ExcelFormatTool> {
     _currentMousePosition = null;
   }
 
+  void _onSortColumn(int columnIndex) {
+    if (_sortColumnIndex == columnIndex) {
+      if (_sortState == SortState.ascending) {
+        _sortState = SortState.descending;
+      } else if (_sortState == SortState.descending) {
+        _sortState = SortState.none;
+      } else {
+        _sortState = SortState.ascending;
+      }
+    } else {
+      _sortColumnIndex = columnIndex;
+      _sortState = SortState.ascending;
+    }
+
+    if (_sortState == SortState.none) {
+      _rows = _originalRows.map((e) => List<String>.from(e)).toList();
+    } else {
+      _rows = _originalRows.map((e) => List<String>.from(e)).toList();
+      _rows.sort((a, b) {
+        final aVal = columnIndex < a.length ? a[columnIndex] : '';
+        final bVal = columnIndex < b.length ? b[columnIndex] : '';
+
+        // Try numeric sort
+        final aNum = double.tryParse(aVal.trim());
+        final bNum = double.tryParse(bVal.trim());
+
+        int cmp;
+        if (aNum != null && bNum != null) {
+          cmp = aNum.compareTo(bNum);
+        } else {
+          cmp = aVal.compareTo(bVal);
+        }
+
+        return _sortState == SortState.ascending ? cmp : -cmp;
+      });
+    }
+
+    setState(() {});
+  }
+
   void _copyColumn(int columnIndex) {
     if (_rows.isEmpty) return;
 
@@ -231,6 +284,27 @@ class _ExcelFormatToolState extends State<ExcelFormatTool> {
               Text(
                 _headers[index],
                 style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(width: 4),
+              IconButton(
+                icon: Icon(
+                  _sortColumnIndex == index
+                      ? (_sortState == SortState.ascending
+                            ? Icons.arrow_upward
+                            : (_sortState == SortState.descending
+                                  ? Icons.arrow_downward
+                                  : Icons.sort))
+                      : Icons.sort,
+                  size: 16,
+                ),
+                tooltip: '排序',
+                onPressed: () => _onSortColumn(index),
+                splashRadius: 16,
+                color: _sortColumnIndex == index && _sortState != SortState.none
+                    ? AppColors.primary
+                    : Colors.grey,
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(),
               ),
               const SizedBox(width: 4),
               IconButton(
