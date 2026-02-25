@@ -4,6 +4,7 @@ import '../widgets/find_bar.dart';
 import '../utils/search_controller.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import '../widgets/mouse_middle_scroll_wrapper.dart';
 
 class JsonFormatterTool extends StatefulWidget {
   const JsonFormatterTool({super.key});
@@ -350,17 +351,20 @@ class _JsonFormatterToolState extends State<JsonFormatterTool> {
               ),
             const SizedBox(height: 8),
             Expanded(
-              child: TextField(
-                controller: _controller,
-                scrollController: _scrollController,
-                focusNode: _focusNode,
-                maxLines: null,
-                expands: true,
-                style: const TextStyle(fontFamily: 'monospace', fontSize: 14),
-                textAlignVertical: TextAlignVertical.top,
-                decoration: const InputDecoration(
-                  border: OutlineInputBorder(),
-                  hintText: '在此输入 JSON 字符串...',
+              child: MouseMiddleScrollWrapper(
+                verticalScrollController: _scrollController,
+                child: TextField(
+                  controller: _controller,
+                  scrollController: _scrollController,
+                  focusNode: _focusNode,
+                  maxLines: null,
+                  expands: true,
+                  style: const TextStyle(fontFamily: 'monospace', fontSize: 14),
+                  textAlignVertical: TextAlignVertical.top,
+                  decoration: const InputDecoration(
+                    border: OutlineInputBorder(),
+                    hintText: '在此输入 JSON 字符串...',
+                  ),
                 ),
               ),
             ),

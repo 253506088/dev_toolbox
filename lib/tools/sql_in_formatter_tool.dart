@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../widgets/find_bar.dart';
 import '../utils/search_controller.dart';
+import '../widgets/mouse_middle_scroll_wrapper.dart';
 
 class SqlInFormatterTool extends StatefulWidget {
   const SqlInFormatterTool({super.key});
@@ -340,16 +341,19 @@ class _SqlInFormatterToolState extends State<SqlInFormatterTool> {
                         ),
                         const SizedBox(height: 8),
                         Expanded(
-                          child: TextField(
-                            controller: _inputController,
-                            scrollController: _inputScrollController,
-                            focusNode: _inputFocusNode,
-                            maxLines: null,
-                            expands: true,
-                            textAlignVertical: TextAlignVertical.top,
-                            decoration: const InputDecoration(
-                              border: OutlineInputBorder(),
-                              hintText: '每行一个值，或输入 SQL IN 格式的值',
+                          child: MouseMiddleScrollWrapper(
+                            verticalScrollController: _inputScrollController,
+                            child: TextField(
+                              controller: _inputController,
+                              scrollController: _inputScrollController,
+                              focusNode: _inputFocusNode,
+                              maxLines: null,
+                              expands: true,
+                              textAlignVertical: TextAlignVertical.top,
+                              decoration: const InputDecoration(
+                                border: OutlineInputBorder(),
+                                hintText: '每行一个值，或输入 SQL IN 格式的值',
+                              ),
                             ),
                           ),
                         ),
@@ -368,18 +372,21 @@ class _SqlInFormatterToolState extends State<SqlInFormatterTool> {
                         ),
                         const SizedBox(height: 8),
                         Expanded(
-                          child: TextField(
-                            controller: _outputController,
-                            scrollController: _outputScrollController,
-                            focusNode: _outputFocusNode,
-                            maxLines: null,
-                            expands: true,
-                            textAlignVertical: TextAlignVertical.top,
-                            readOnly: true,
-                            decoration: const InputDecoration(
-                              border: OutlineInputBorder(),
-                              filled: true,
-                              fillColor: Color(0xFFF5F5F5),
+                          child: MouseMiddleScrollWrapper(
+                            verticalScrollController: _outputScrollController,
+                            child: TextField(
+                              controller: _outputController,
+                              scrollController: _outputScrollController,
+                              focusNode: _outputFocusNode,
+                              maxLines: null,
+                              expands: true,
+                              textAlignVertical: TextAlignVertical.top,
+                              readOnly: true,
+                              decoration: const InputDecoration(
+                                border: OutlineInputBorder(),
+                                filled: true,
+                                fillColor: Color(0xFFF5F5F5),
+                              ),
                             ),
                           ),
                         ),

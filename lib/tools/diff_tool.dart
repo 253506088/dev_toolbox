@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:diff_match_patch/diff_match_patch.dart';
 import '../widgets/find_bar.dart';
+import '../widgets/mouse_middle_scroll_wrapper.dart';
 
 class DiffTool extends StatefulWidget {
   const DiffTool({super.key});
@@ -21,6 +22,10 @@ class _DiffToolState extends State<DiffTool> {
   final ScrollController _leftHorizontalController = ScrollController();
   final ScrollController _rightHorizontalController = ScrollController();
   final ScrollController _navScrollController = ScrollController();
+
+  // Input Text Area Scroll Controllers
+  final ScrollController _leftInputScrollController = ScrollController();
+  final ScrollController _rightInputScrollController = ScrollController();
 
   final FocusNode _diffFocusNode = FocusNode();
   final FocusNode _leftInputFocusNode = FocusNode();
@@ -67,6 +72,9 @@ class _DiffToolState extends State<DiffTool> {
     _leftHorizontalController.dispose();
     _rightHorizontalController.dispose();
     _navScrollController.dispose();
+
+    _leftInputScrollController.dispose();
+    _rightInputScrollController.dispose();
 
     _diffFocusNode.dispose();
     _leftInputFocusNode.dispose();
@@ -682,19 +690,24 @@ class _DiffToolState extends State<DiffTool> {
                           ),
                           const SizedBox(height: 4),
                           Expanded(
-                            child: TextField(
-                              controller: _leftController,
-                              focusNode: _leftInputFocusNode,
-                              maxLines: null,
-                              expands: true,
-                              textAlignVertical: TextAlignVertical.top,
-                              style: const TextStyle(
-                                fontFamily: 'Consolas',
-                                fontSize: 13,
-                              ),
-                              decoration: const InputDecoration(
-                                border: OutlineInputBorder(),
-                                contentPadding: EdgeInsets.all(8),
+                            child: MouseMiddleScrollWrapper(
+                              verticalScrollController:
+                                  _leftInputScrollController,
+                              child: TextField(
+                                controller: _leftController,
+                                scrollController: _leftInputScrollController,
+                                focusNode: _leftInputFocusNode,
+                                maxLines: null,
+                                expands: true,
+                                textAlignVertical: TextAlignVertical.top,
+                                style: const TextStyle(
+                                  fontFamily: 'Consolas',
+                                  fontSize: 13,
+                                ),
+                                decoration: const InputDecoration(
+                                  border: OutlineInputBorder(),
+                                  contentPadding: EdgeInsets.all(8),
+                                ),
                               ),
                             ),
                           ),
@@ -712,19 +725,24 @@ class _DiffToolState extends State<DiffTool> {
                           ),
                           const SizedBox(height: 4),
                           Expanded(
-                            child: TextField(
-                              controller: _rightController,
-                              focusNode: _rightInputFocusNode,
-                              maxLines: null,
-                              expands: true,
-                              textAlignVertical: TextAlignVertical.top,
-                              style: const TextStyle(
-                                fontFamily: 'Consolas',
-                                fontSize: 13,
-                              ),
-                              decoration: const InputDecoration(
-                                border: OutlineInputBorder(),
-                                contentPadding: EdgeInsets.all(8),
+                            child: MouseMiddleScrollWrapper(
+                              verticalScrollController:
+                                  _rightInputScrollController,
+                              child: TextField(
+                                controller: _rightController,
+                                scrollController: _rightInputScrollController,
+                                focusNode: _rightInputFocusNode,
+                                maxLines: null,
+                                expands: true,
+                                textAlignVertical: TextAlignVertical.top,
+                                style: const TextStyle(
+                                  fontFamily: 'Consolas',
+                                  fontSize: 13,
+                                ),
+                                decoration: const InputDecoration(
+                                  border: OutlineInputBorder(),
+                                  contentPadding: EdgeInsets.all(8),
+                                ),
                               ),
                             ),
                           ),
@@ -819,132 +837,136 @@ class _DiffToolState extends State<DiffTool> {
     ScrollController horizontalController,
     bool isLeft,
   ) {
-    return Row(
-      children: [
-        // 固定左侧区域：行号 + 指示器
-        SizedBox(
-          width: 71, // 50(行号) + 1(分隔线) + 20(指示器)
-          child: ListView.builder(
-            controller: controller,
-            itemCount: lines.length,
-            itemExtent: 24,
-            itemBuilder: (context, index) {
-              final line = lines[index];
-              Color? bgColor;
-              Color? lineNumColor = Colors.grey;
-              String? indicator;
-              Color? indicatorColor;
+    return MouseMiddleScrollWrapper(
+      verticalScrollController: contentController,
+      horizontalScrollController: horizontalController,
+      child: Row(
+        children: [
+          // 固定左侧区域：行号 + 指示器
+          SizedBox(
+            width: 71, // 50(行号) + 1(分隔线) + 20(指示器)
+            child: ListView.builder(
+              controller: controller,
+              itemCount: lines.length,
+              itemExtent: 24,
+              itemBuilder: (context, index) {
+                final line = lines[index];
+                Color? bgColor;
+                Color? lineNumColor = Colors.grey;
+                String? indicator;
+                Color? indicatorColor;
 
-              if (line.type == DiffType.delete) {
-                bgColor = Colors.red.shade50;
-                lineNumColor = Colors.red;
-                indicator = '-';
-                indicatorColor = Colors.red;
-              } else if (line.type == DiffType.insert) {
-                bgColor = Colors.green.shade50;
-                lineNumColor = Colors.green;
-                indicator = '+';
-                indicatorColor = Colors.green;
-              } else if (line.type == DiffType.modified) {
-                bgColor = Colors.amber.shade50;
-                lineNumColor = Colors.orange;
-                indicator = '~';
-                indicatorColor = Colors.orange;
-              } else if (line.type == DiffType.placeholder) {
-                bgColor = Colors.grey.shade100;
-              }
+                if (line.type == DiffType.delete) {
+                  bgColor = Colors.red.shade50;
+                  lineNumColor = Colors.red;
+                  indicator = '-';
+                  indicatorColor = Colors.red;
+                } else if (line.type == DiffType.insert) {
+                  bgColor = Colors.green.shade50;
+                  lineNumColor = Colors.green;
+                  indicator = '+';
+                  indicatorColor = Colors.green;
+                } else if (line.type == DiffType.modified) {
+                  bgColor = Colors.amber.shade50;
+                  lineNumColor = Colors.orange;
+                  indicator = '~';
+                  indicatorColor = Colors.orange;
+                } else if (line.type == DiffType.placeholder) {
+                  bgColor = Colors.grey.shade100;
+                }
 
-              return Container(
-                color: bgColor,
-                child: Row(
-                  children: [
-                    // 行号
-                    Container(
-                      width: 50,
-                      padding: const EdgeInsets.symmetric(horizontal: 8),
-                      color: Colors.grey.shade100,
-                      alignment: Alignment.centerRight,
-                      child: Text(
-                        line.lineNum?.toString() ?? '',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: lineNumColor,
-                          fontFamily: 'Consolas',
+                return Container(
+                  color: bgColor,
+                  child: Row(
+                    children: [
+                      // 行号
+                      Container(
+                        width: 50,
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                        color: Colors.grey.shade100,
+                        alignment: Alignment.centerRight,
+                        child: Text(
+                          line.lineNum?.toString() ?? '',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: lineNumColor,
+                            fontFamily: 'Consolas',
+                          ),
                         ),
                       ),
-                    ),
-                    Container(width: 1, color: Colors.grey.shade300),
-                    // 指示器
-                    Container(
-                      width: 20,
-                      alignment: Alignment.center,
-                      child: indicator != null
-                          ? Text(
-                              indicator,
-                              style: TextStyle(
-                                color: indicatorColor,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            )
-                          : null,
-                    ),
-                  ],
-                ),
-              );
-            },
+                      Container(width: 1, color: Colors.grey.shade300),
+                      // 指示器
+                      Container(
+                        width: 20,
+                        alignment: Alignment.center,
+                        child: indicator != null
+                            ? Text(
+                                indicator,
+                                style: TextStyle(
+                                  color: indicatorColor,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              )
+                            : null,
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
           ),
-        ),
-        // 可横向滚动的内容区域
-        Expanded(
-          child: Scrollbar(
-            controller: horizontalController,
-            thumbVisibility: true,
-            child: SingleChildScrollView(
+          // 可横向滚动的内容区域
+          Expanded(
+            child: Scrollbar(
               controller: horizontalController,
-              scrollDirection: Axis.horizontal,
-              child: SizedBox(
-                // 设置一个足够宽的宽度以容纳长文本
-                width: 2000,
-                child: ListView.builder(
-                  controller: contentController,
-                  itemCount: lines.length,
-                  itemExtent: 24,
-                  itemBuilder: (context, index) {
-                    final line = lines[index];
-                    Color? bgColor;
+              thumbVisibility: true,
+              child: SingleChildScrollView(
+                controller: horizontalController,
+                scrollDirection: Axis.horizontal,
+                child: SizedBox(
+                  // 设置一个足够宽的宽度以容纳长文本
+                  width: 2000,
+                  child: ListView.builder(
+                    controller: contentController,
+                    itemCount: lines.length,
+                    itemExtent: 24,
+                    itemBuilder: (context, index) {
+                      final line = lines[index];
+                      Color? bgColor;
 
-                    if (line.type == DiffType.delete) {
-                      bgColor = Colors.red.shade50;
-                    } else if (line.type == DiffType.insert) {
-                      bgColor = Colors.green.shade50;
-                    } else if (line.type == DiffType.modified) {
-                      bgColor = Colors.amber.shade50;
-                    } else if (line.type == DiffType.placeholder) {
-                      bgColor = Colors.grey.shade100;
-                    }
+                      if (line.type == DiffType.delete) {
+                        bgColor = Colors.red.shade50;
+                      } else if (line.type == DiffType.insert) {
+                        bgColor = Colors.green.shade50;
+                      } else if (line.type == DiffType.modified) {
+                        bgColor = Colors.amber.shade50;
+                      } else if (line.type == DiffType.placeholder) {
+                        bgColor = Colors.grey.shade100;
+                      }
 
-                    // Check if this line is the current active match
-                    bool isCurrentMatch = false;
-                    if (_diffMatches.isNotEmpty &&
-                        _currentDiffMatchIndex < _diffMatches.length) {
-                      isCurrentMatch =
-                          _diffMatches[_currentDiffMatchIndex].lineIndex ==
-                          index;
-                    }
+                      // Check if this line is the current active match
+                      bool isCurrentMatch = false;
+                      if (_diffMatches.isNotEmpty &&
+                          _currentDiffMatchIndex < _diffMatches.length) {
+                        isCurrentMatch =
+                            _diffMatches[_currentDiffMatchIndex].lineIndex ==
+                            index;
+                      }
 
-                    return Container(
-                      color: bgColor,
-                      padding: const EdgeInsets.symmetric(horizontal: 4),
-                      alignment: Alignment.centerLeft,
-                      child: _buildLineContent(line, isLeft, isCurrentMatch),
-                    );
-                  },
+                      return Container(
+                        color: bgColor,
+                        padding: const EdgeInsets.symmetric(horizontal: 4),
+                        alignment: Alignment.centerLeft,
+                        child: _buildLineContent(line, isLeft, isCurrentMatch),
+                      );
+                    },
+                  ),
                 ),
               ),
             ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 

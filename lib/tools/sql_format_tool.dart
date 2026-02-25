@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../widgets/find_bar.dart';
 import '../utils/search_controller.dart';
+import '../widgets/mouse_middle_scroll_wrapper.dart';
 
 class SqlFormatTool extends StatefulWidget {
   const SqlFormatTool({super.key});
@@ -775,23 +776,26 @@ class _SqlFormatToolState extends State<SqlFormatTool> {
             ),
             const SizedBox(height: 16),
             Expanded(
-              child: TextField(
-                controller: _controller,
-                scrollController: _scrollController,
-                focusNode: _focusNode,
-                maxLines: null,
-                expands: true,
-                textAlignVertical: TextAlignVertical.top,
-                style: const TextStyle(
-                  fontFamily: 'Consolas',
-                  fontSize: 14,
-                  color: Colors.black87,
-                  height: 1.5,
-                ),
-                decoration: const InputDecoration(
-                  border: OutlineInputBorder(),
-                  contentPadding: EdgeInsets.all(12),
-                  hintText: '在此输入 SQL 语句...',
+              child: MouseMiddleScrollWrapper(
+                verticalScrollController: _scrollController,
+                child: TextField(
+                  controller: _controller,
+                  scrollController: _scrollController,
+                  focusNode: _focusNode,
+                  maxLines: null,
+                  expands: true,
+                  textAlignVertical: TextAlignVertical.top,
+                  style: const TextStyle(
+                    fontFamily: 'Consolas',
+                    fontSize: 14,
+                    color: Colors.black87,
+                    height: 1.5,
+                  ),
+                  decoration: const InputDecoration(
+                    border: OutlineInputBorder(),
+                    contentPadding: EdgeInsets.all(12),
+                    hintText: '在此输入 SQL 语句...',
+                  ),
                 ),
               ),
             ),
