@@ -65,6 +65,7 @@ class _MainWindowState extends State<MainWindow> {
     const SqlInFormatterTool(),
     const SqlFormatTool(),
     const JsonFormatterTool(),
+    const ExcelFormatTool(),
     const TimeConverterTool(),
     const Base64Tool(),
     const Md5Tool(),
@@ -75,7 +76,6 @@ class _MainWindowState extends State<MainWindow> {
     const SdPromptTool(),
     const PdfHiddenTextTool(),
     const WindowsFileManagerTool(),
-    const ExcelFormatTool(),
   ];
   Future<void> _launchUrl() async {
     final Uri url = Uri.parse('https://github.com/253506088/dev_toolbox');
@@ -132,6 +132,10 @@ class _MainWindowState extends State<MainWindow> {
                         label: Text('JSON'),
                       ),
                       NavigationRailDestination(
+                        icon: Icon(Icons.table_chart),
+                        label: Text('Excel'),
+                      ),
+                      NavigationRailDestination(
                         icon: Icon(Icons.access_time),
                         label: Text('Time'),
                       ),
@@ -170,10 +174,6 @@ class _MainWindowState extends State<MainWindow> {
                       NavigationRailDestination(
                         icon: Icon(Icons.folder),
                         label: Text('Win文件'),
-                      ),
-                      NavigationRailDestination(
-                        icon: Icon(Icons.table_chart),
-                        label: Text('Excel'),
                       ),
                     ],
                     trailing: Padding(
