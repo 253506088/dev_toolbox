@@ -486,6 +486,7 @@ class _ExcelFormatToolState extends State<ExcelFormatTool> {
               Listener(
                 onPointerDown: (e) {
                   _focusNode.requestFocus(); // 获取焦点，保证后续能接收到 Ctrl+C
+                  if (e.buttons != 1) return; // 只响应鼠标左键按下，避免外层鼠标中键(4)拖拽被拦截
                   // 点击时判定
                   if (_isCtrlPressed) {
                     // Ctrl 模式：反转当前格子的选中态，且不开启拖拽清理
