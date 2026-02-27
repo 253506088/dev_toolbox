@@ -330,6 +330,20 @@ class _ExcelFormatToolState extends State<ExcelFormatTool> {
             return DataCell(
               Text(v, style: const TextStyle(fontSize: 13)),
               showEditIcon: false,
+              onTap: () {
+                if (v.isNotEmpty) {
+                  Clipboard.setData(ClipboardData(text: v));
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('已复制: $v'),
+                        behavior: SnackBarBehavior.floating,
+                        duration: const Duration(seconds: 2),
+                      ),
+                    );
+                  }
+                }
+              },
             );
           }),
         ),
