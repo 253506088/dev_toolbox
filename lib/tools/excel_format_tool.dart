@@ -24,6 +24,16 @@ class _ExcelFormatToolState extends State<ExcelFormatTool> {
   int? _sortColumnIndex;
   SortState _sortState = SortState.none;
 
+  // 新增：多选数据状态追踪
+  final Set<String> _selectedCells = {}; // 存储 "row-col"
+  bool _isCtrlPressed = false;
+  bool _isDragging = false;
+  int? _dragStartRow;
+  int? _dragStartCol;
+
+  // 新增：监听外层外设输入，拦截 Ctrl+C
+  final FocusNode _focusNode = FocusNode();
+
   final ScrollController _horizontalScrollController = ScrollController();
   final ScrollController _verticalScrollController = ScrollController();
 
@@ -37,7 +47,132 @@ class _ExcelFormatToolState extends State<ExcelFormatTool> {
     _inputController.dispose();
     _horizontalScrollController.dispose();
     _verticalScrollController.dispose();
+    _focusNode.dispose();
     super.dispose();
+  }
+
+  // --- 新增：二维框选矩形选取辅助函数 ---
+  void _updateDragSelection(int currentRow, int currentCol) {
+    if (_dragStartRow == null || _dragStartCol == null) return;
+
+    // 为了在拖拽过程中动态显示，我们需要在每次 move 时，先把"这次拖拽覆盖的预测区"记录下来
+    setState(() {
+      // 更新范围给 build 方法判定
+      _dragEndRow = currentRow;
+      _dragEndCol = currentCol;
+    });
+  }
+
+  int? _dragEndRow;
+  int? _dragEndCol;
+
+  bool _isCellInCurrentDrag(int r, int c) {
+    if (!_isDragging ||
+        _dragStartRow == null ||
+        _dragStartCol == null ||
+        _dragEndRow == null ||
+        _dragEndCol == null) {
+      return false;
+    }
+    final int minRow = _dragStartRow! < _dragEndRow!
+        ? _dragStartRow!
+        : _dragEndRow!;
+    final int maxRow = _dragStartRow! > _dragEndRow!
+        ? _dragStartRow!
+        : _dragEndRow!;
+    final int minCol = _dragStartCol! < _dragEndCol!
+        ? _dragStartCol!
+        : _dragEndCol!;
+    final int maxCol = _dragStartCol! > _dragEndCol!
+        ? _dragStartCol!
+        : _dragEndCol!;
+
+    return r >= minRow && r <= maxRow && c >= minCol && c <= maxCol;
+  }
+
+  void _commitDragSelection() {
+    if (_dragStartRow == null ||
+        _dragStartCol == null ||
+        _dragEndRow == null ||
+        _dragEndCol == null)
+      return;
+    final int minRow = _dragStartRow! < _dragEndRow!
+        ? _dragStartRow!
+        : _dragEndRow!;
+    final int maxRow = _dragStartRow! > _dragEndRow!
+        ? _dragStartRow!
+        : _dragEndRow!;
+    final int minCol = _dragStartCol! < _dragEndCol!
+        ? _dragStartCol!
+        : _dragEndCol!;
+    final int maxCol = _dragStartCol! > _dragEndCol!
+        ? _dragStartCol!
+        : _dragEndCol!;
+
+    for (int r = minRow; r <= maxRow; r++) {
+      for (int c = minCol; c <= maxCol; c++) {
+        _selectedCells.add("$r-$c");
+      }
+    }
+    _dragStartRow = null;
+    _dragStartCol = null;
+    _dragEndRow = null;
+    _dragEndCol = null;
+    setState(() {});
+  }
+
+  // 二维拼版提取：找出选中的行列跨度，留白拼装复制
+  void _copyMultiSelection() {
+    if (_selectedCells.isEmpty) return;
+
+    int minRow = 999999, maxRow = -1;
+    int minCol = 999999, maxCol = -1;
+
+    for (var cell in _selectedCells) {
+      final parts = cell.split('-');
+      final r = int.parse(parts[0]);
+      final c = int.parse(parts[1]);
+      if (r < minRow) minRow = r;
+      if (r > maxRow) maxRow = r;
+      if (c < minCol) minCol = c;
+      if (c > maxCol) maxCol = c;
+    }
+
+    final StringBuffer sb = StringBuffer();
+    for (int r = minRow; r <= maxRow; r++) {
+      List<String> rowCells = [];
+      for (int c = minCol; c <= maxCol; c++) {
+        if (_selectedCells.contains("$r-$c")) {
+          // 确保索引安全
+          if (r < _rows.length && c < _rows[r].length) {
+            rowCells.add(_rows[r][c]);
+          } else {
+            rowCells.add('');
+          }
+        } else {
+          rowCells.add(''); // 没选中的留空
+        }
+      }
+      sb.writeln(rowCells.join('\t'));
+    }
+
+    final result = sb.toString().trimRight();
+    Clipboard.setData(ClipboardData(text: result));
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('已复制选中的 ${_selectedCells.length} 个单元格区域！'),
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    }
+
+    // 老大爷的需求：复制走后取消选中的内容
+    setState(() {
+      _selectedCells.clear();
+    });
   }
 
   void _parseText() {
@@ -143,6 +278,8 @@ class _ExcelFormatToolState extends State<ExcelFormatTool> {
     _originalRows = _rows.map((e) => List<String>.from(e)).toList();
     _sortColumnIndex = null;
     _sortState = SortState.none;
+    _selectedCells.clear();
+    _isDragging = false;
 
     setState(() {});
   }
@@ -155,6 +292,8 @@ class _ExcelFormatToolState extends State<ExcelFormatTool> {
       _originalRows = [];
       _sortColumnIndex = null;
       _sortState = SortState.none;
+      _selectedCells.clear();
+      _isDragging = false;
     });
   }
 
@@ -272,51 +411,62 @@ class _ExcelFormatToolState extends State<ExcelFormatTool> {
   // 抽出 DataTable 的共用构建方法，便于实现表头吸顶幻象
   Widget _buildDataTable(BuildContext context) {
     return DataTable(
+      border: TableBorder.all(
+        color: Colors.grey.withOpacity(0.4),
+        width: 1.0, // 新增：外层和内部统一增加纵横实线表格网格
+      ),
       headingRowColor: MaterialStateProperty.resolveWith<Color>(
         (Set<MaterialState> states) => Colors.grey.withOpacity(0.2),
       ),
       columns: List.generate(
         _headers.length,
         (index) => DataColumn(
-          label: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                _headers[index],
-                style: const TextStyle(fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(width: 4),
-              IconButton(
-                icon: Icon(
-                  _sortColumnIndex == index
-                      ? (_sortState == SortState.ascending
-                            ? Icons.arrow_upward
-                            : (_sortState == SortState.descending
-                                  ? Icons.arrow_downward
-                                  : Icons.sort))
-                      : Icons.sort,
-                  size: 16,
+          label: InkWell(
+            // 为表头包裹 InkWell 提供点击焦点
+            onTap: () {
+              _focusNode.requestFocus();
+            },
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  _headers[index],
+                  style: const TextStyle(fontWeight: FontWeight.bold),
                 ),
-                tooltip: '排序',
-                onPressed: () => _onSortColumn(index),
-                splashRadius: 16,
-                color: _sortColumnIndex == index && _sortState != SortState.none
-                    ? AppColors.primary
-                    : Colors.grey,
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(),
-              ),
-              const SizedBox(width: 4),
-              IconButton(
-                icon: const Icon(Icons.content_copy, size: 16),
-                tooltip: '复制整列',
-                onPressed: () => _copyColumn(index),
-                splashRadius: 16,
-                color: AppColors.primary,
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(),
-              ),
-            ],
+                const SizedBox(width: 4),
+                IconButton(
+                  icon: Icon(
+                    _sortColumnIndex == index
+                        ? (_sortState == SortState.ascending
+                              ? Icons.arrow_upward
+                              : (_sortState == SortState.descending
+                                    ? Icons.arrow_downward
+                                    : Icons.sort))
+                        : Icons.sort,
+                    size: 16,
+                  ),
+                  tooltip: '排序',
+                  onPressed: () => _onSortColumn(index),
+                  splashRadius: 16,
+                  color:
+                      _sortColumnIndex == index && _sortState != SortState.none
+                      ? AppColors.primary
+                      : Colors.grey,
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                ),
+                const SizedBox(width: 4),
+                IconButton(
+                  icon: const Icon(Icons.content_copy, size: 16),
+                  tooltip: '复制整列',
+                  onPressed: () => _copyColumn(index),
+                  splashRadius: 16,
+                  color: AppColors.primary,
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -327,23 +477,87 @@ class _ExcelFormatToolState extends State<ExcelFormatTool> {
             final v = colIndex < _rows[rowIndex].length
                 ? _rows[rowIndex][colIndex]
                 : '';
+            final cellKey = "$rowIndex-$colIndex";
+            final bool isSelected =
+                _selectedCells.contains(cellKey) ||
+                _isCellInCurrentDrag(rowIndex, colIndex);
+
             return DataCell(
-              Text(v, style: const TextStyle(fontSize: 13)),
-              showEditIcon: false,
-              onTap: () {
-                if (v.isNotEmpty) {
-                  Clipboard.setData(ClipboardData(text: v));
-                  if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text('已复制: $v'),
-                        behavior: SnackBarBehavior.floating,
-                        duration: const Duration(seconds: 2),
-                      ),
-                    );
+              Listener(
+                onPointerDown: (e) {
+                  _focusNode.requestFocus(); // 获取焦点，保证后续能接收到 Ctrl+C
+                  // 点击时判定
+                  if (_isCtrlPressed) {
+                    // Ctrl 模式：反转当前格子的选中态，且不开启拖拽清理
+                    setState(() {
+                      if (_selectedCells.contains(cellKey)) {
+                        _selectedCells.remove(cellKey);
+                      } else {
+                        _selectedCells.add(cellKey);
+                      }
+                    });
+                  } else {
+                    // 普通左键按下
+                    setState(() {
+                      _selectedCells.clear();
+                      _isDragging = true;
+                      _dragStartRow = rowIndex;
+                      _dragStartCol = colIndex;
+                      _dragEndRow = rowIndex;
+                      _dragEndCol = colIndex;
+                    });
                   }
-                }
-              },
+                },
+                onPointerMove: (e) {
+                  // Listener 中捕获不到 Enter，只能捕获整个屏幕的 Move 靠算坐标。
+                  // Flutter 更好的方式在此处采用更细致的 MouseRegion 回调：
+                },
+                onPointerUp: (e) {
+                  if (_isDragging) {
+                    setState(() {
+                      _isDragging = false;
+                      // 判定到底是单一点击还是范围拖拽
+                      if (_dragStartRow == _dragEndRow &&
+                          _dragStartCol == _dragEndCol) {
+                        // 【保持单格点击立刻复制的老逻辑】
+                        _selectedCells.clear(); // 单击完毕不留蓝底保持原本体验
+                        if (v.isNotEmpty) {
+                          Clipboard.setData(ClipboardData(text: v));
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text('已复制: $v'),
+                                behavior: SnackBarBehavior.floating,
+                                duration: const Duration(seconds: 2),
+                              ),
+                            );
+                          }
+                        }
+                      } else {
+                        // 面状拖拽结束，正式固化进 _selectedCells
+                        _commitDragSelection();
+                      }
+                    });
+                  }
+                },
+                child: MouseRegion(
+                  onEnter: (e) {
+                    if (_isDragging && !_isCtrlPressed) {
+                      _updateDragSelection(rowIndex, colIndex);
+                    }
+                  },
+                  child: Container(
+                    width: double.infinity,
+                    height: double.infinity,
+                    color: isSelected
+                        ? Colors.blue.withOpacity(0.3)
+                        : Colors.transparent,
+                    alignment: Alignment.centerLeft,
+                    child: Text(v, style: const TextStyle(fontSize: 13)),
+                  ),
+                ),
+              ),
+              showEditIcon: false,
             );
           }),
         ),
@@ -353,166 +567,193 @@ class _ExcelFormatToolState extends State<ExcelFormatTool> {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        // Top Toolbar
-        Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Row(
-            children: [
-              Expanded(
-                child: Text(
-                  '表格数据提取工具',
-                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-              ElevatedButton.icon(
-                onPressed: _parseText,
-                icon: const Icon(Icons.table_chart),
-                label: const Text('解析生成表格'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.primary,
-                  foregroundColor: Colors.white,
-                ),
-              ),
-              const SizedBox(width: 8),
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Checkbox(
-                    value: _ignoreEmptyHeader,
-                    activeColor: AppColors.primary,
-                    onChanged: (v) {
-                      setState(() {
-                        _ignoreEmptyHeader = v ?? true;
-                      });
-                      if (_inputController.text.isNotEmpty) {
-                        _parseText();
-                      }
-                    },
-                  ),
-                  const Text('过滤无表头的列'),
-                ],
-              ),
-              const SizedBox(width: 8),
-              OutlinedButton.icon(
-                onPressed: _clear,
-                icon: const Icon(Icons.clear, color: Colors.red),
-                label: const Text('清空', style: TextStyle(color: Colors.red)),
-              ),
-            ],
-          ),
-        ),
+    return Focus(
+      // 外围截获键盘按键
+      focusNode: _focusNode,
+      autofocus: true,
+      onKeyEvent: (node, event) {
+        // 更新 Ctrl 状态
+        if (event.logicalKey == LogicalKeyboardKey.controlLeft ||
+            event.logicalKey == LogicalKeyboardKey.controlRight) {
+          if (event is KeyDownEvent) {
+            _isCtrlPressed = true;
+          } else if (event is KeyUpEvent) {
+            _isCtrlPressed = false;
+          }
+        }
 
-        // Input Area
-        NeoBlock(
-          margin: const EdgeInsets.symmetric(horizontal: 16.0),
-          padding: const EdgeInsets.all(12.0),
-          child: TextField(
-            controller: _inputController,
-            maxLines: 5,
-            decoration: const InputDecoration(
-              hintText:
-                  '在此粘贴带有制表符(Tab)分隔的网页列表内容...\n示例:\n列A\t列B\t列C\n值A1\t值B1\t值C1',
-              border: InputBorder.none,
-            ),
-            style: const TextStyle(fontFamily: 'monospace', fontSize: 14),
-          ),
-        ),
+        // 捕获 Ctrl + C 触发多选格段的复合复制
+        if (_isCtrlPressed &&
+            event.logicalKey == LogicalKeyboardKey.keyC &&
+            event is KeyDownEvent) {
+          _copyMultiSelection();
+          return KeyEventResult.handled;
+        }
 
-        const SizedBox(height: 16),
-
-        // Data Table Area
-        Expanded(
-          child: _headers.isEmpty
-              ? const Center(
+        return KeyEventResult.ignored;
+      },
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // Top Toolbar
+          Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Row(
+              children: [
+                Expanded(
                   child: Text(
-                    '暂无数据，请在上方输入多列文本后点击解析',
-                    style: TextStyle(color: Colors.grey),
+                    '表格数据提取工具',
+                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
-                )
-              : NeoBlock(
-                  margin: const EdgeInsets.fromLTRB(16.0, 0, 16.0, 16.0),
-                  child: LayoutBuilder(
-                    builder: (context, constraints) {
-                      // 将外层改为横向滚动，内侧使用 Stack，使表头置顶粘滞跟随横向移动但在纵向上绝对悬浮
-                      return Listener(
-                        behavior: HitTestBehavior.opaque,
-                        onPointerDown: (event) {
-                          if (event.buttons == 4) {
-                            _scrollOrigin = event.position;
-                            _currentMousePosition = event.position;
-                            _startScrolling();
-                          }
-                        },
-                        onPointerMove: (event) {
-                          if (_scrollOrigin != null) {
-                            _currentMousePosition = event.position;
-                          }
-                        },
-                        onPointerUp: (event) {
-                          _stopScrolling();
-                        },
-                        // 把负责上下滚动的 Scrollbar 提到最外层，它就会贴在屏幕最右边固定住
-                        child: Scrollbar(
-                          controller: _verticalScrollController,
-                          thumbVisibility: true,
-                          notificationPredicate: (notif) =>
-                              notif.depth == 1, // 纵向现在被包在里面是深度1
+                ),
+                ElevatedButton.icon(
+                  onPressed: _parseText,
+                  icon: const Icon(Icons.table_chart),
+                  label: const Text('解析生成表格'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primary,
+                    foregroundColor: Colors.white,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Checkbox(
+                      value: _ignoreEmptyHeader,
+                      activeColor: AppColors.primary,
+                      onChanged: (v) {
+                        setState(() {
+                          _ignoreEmptyHeader = v ?? true;
+                        });
+                        if (_inputController.text.isNotEmpty) {
+                          _parseText();
+                        }
+                      },
+                    ),
+                    const Text('过滤无表头的列'),
+                  ],
+                ),
+                const SizedBox(width: 8),
+                OutlinedButton.icon(
+                  onPressed: _clear,
+                  icon: const Icon(Icons.clear, color: Colors.red),
+                  label: const Text('清空', style: TextStyle(color: Colors.red)),
+                ),
+              ],
+            ),
+          ),
+
+          // Input Area
+          NeoBlock(
+            margin: const EdgeInsets.symmetric(horizontal: 16.0),
+            padding: const EdgeInsets.all(12.0),
+            child: TextField(
+              controller: _inputController,
+              maxLines: 5,
+              decoration: const InputDecoration(
+                hintText:
+                    '在此粘贴带有制表符(Tab)分隔的网页列表内容...\n示例:\n列A\t列B\t列C\n值A1\t值B1\t值C1',
+                border: InputBorder.none,
+              ),
+              style: const TextStyle(fontFamily: 'monospace', fontSize: 14),
+            ),
+          ),
+
+          const SizedBox(height: 16),
+
+          // Data Table Area
+          Expanded(
+            child: _headers.isEmpty
+                ? const Center(
+                    child: Text(
+                      '暂无数据，请在上方输入多列文本后点击解析',
+                      style: TextStyle(color: Colors.grey),
+                    ),
+                  )
+                : NeoBlock(
+                    margin: const EdgeInsets.fromLTRB(16.0, 0, 16.0, 16.0),
+                    child: LayoutBuilder(
+                      builder: (context, constraints) {
+                        // 将外层改为横向滚动，内侧使用 Stack，使表头置顶粘滞跟随横向移动但在纵向上绝对悬浮
+                        return Listener(
+                          behavior: HitTestBehavior.opaque,
+                          onPointerDown: (event) {
+                            if (event.buttons == 4) {
+                              _scrollOrigin = event.position;
+                              _currentMousePosition = event.position;
+                              _startScrolling();
+                            }
+                          },
+                          onPointerMove: (event) {
+                            if (_scrollOrigin != null) {
+                              _currentMousePosition = event.position;
+                            }
+                          },
+                          onPointerUp: (event) {
+                            _stopScrolling();
+                          },
+                          // 把负责上下滚动的 Scrollbar 提到最外层，它就会贴在屏幕最右边固定住
                           child: Scrollbar(
-                            controller: _horizontalScrollController,
+                            controller: _verticalScrollController,
                             thumbVisibility: true,
                             notificationPredicate: (notif) =>
-                                notif.depth == 0, // 外侧横向是深度0
-                            child: SingleChildScrollView(
+                                notif.depth == 1, // 纵向现在被包在里面是深度1
+                            child: Scrollbar(
                               controller: _horizontalScrollController,
-                              scrollDirection: Axis.horizontal,
-                              child: ConstrainedBox(
-                                constraints: BoxConstraints(
-                                  minWidth: constraints.maxWidth,
-                                ),
-                                child: Stack(
-                                  children: [
-                                    // 底部全表（含表头，纵向可滚）
-                                    Padding(
-                                      padding: const EdgeInsets.all(8.0),
-                                      child: SingleChildScrollView(
-                                        controller: _verticalScrollController,
-                                        scrollDirection: Axis.vertical,
-                                        child: _buildDataTable(context),
-                                      ),
-                                    ),
-                                    // 顶部粘性表头覆盖层（由于它放在Stack顶层且没有包裹进垂直滚动，
-                                    // 所以只会跟着外围水平滚动一起左右移动，而不会上下翻）
-                                    Positioned(
-                                      top: 8.0, // 与下方的 Padding 对齐
-                                      left: 8.0,
-                                      right: 8.0,
-                                      height: 56.0, // Flutter DataTable 的默认表头高度
-                                      child: ClipRect(
-                                        child: Container(
-                                          color: Theme.of(
-                                            context,
-                                          ).scaffoldBackgroundColor, // 防止滚动内容透视
+                              thumbVisibility: true,
+                              notificationPredicate: (notif) =>
+                                  notif.depth == 0, // 外侧横向是深度0
+                              child: SingleChildScrollView(
+                                controller: _horizontalScrollController,
+                                scrollDirection: Axis.horizontal,
+                                child: ConstrainedBox(
+                                  constraints: BoxConstraints(
+                                    minWidth: constraints.maxWidth,
+                                  ),
+                                  child: Stack(
+                                    children: [
+                                      // 底部全表（含表头，纵向可滚）
+                                      Padding(
+                                        padding: const EdgeInsets.all(8.0),
+                                        child: SingleChildScrollView(
+                                          controller: _verticalScrollController,
+                                          scrollDirection: Axis.vertical,
                                           child: _buildDataTable(context),
                                         ),
                                       ),
-                                    ),
-                                  ],
+                                      // 顶部粘性表头覆盖层（由于它放在Stack顶层且没有包裹进垂直滚动，
+                                      // 所以只会跟着外围水平滚动一起左右移动，而不会上下翻）
+                                      Positioned(
+                                        top: 8.0, // 与下方的 Padding 对齐
+                                        left: 8.0,
+                                        right: 8.0,
+                                        height:
+                                            56.0, // Flutter DataTable 的默认表头高度
+                                        child: ClipRect(
+                                          child: Container(
+                                            color: Theme.of(
+                                              context,
+                                            ).scaffoldBackgroundColor, // 防止滚动内容透视
+                                            child: _buildDataTable(context),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
                                 ),
                               ),
                             ),
                           ),
-                        ),
-                      );
-                    },
+                        );
+                      },
+                    ),
                   ),
-                ),
-        ),
-      ],
+          ),
+        ],
+      ),
     );
   }
 }
