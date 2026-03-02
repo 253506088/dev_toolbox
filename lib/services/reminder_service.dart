@@ -160,19 +160,20 @@ class ReminderService {
     final updatedNote = note.copyWith(reminder: updatedReminder);
     await StickyNoteService.update(updatedNote);
 
-    // 1. 播放系统提示音
-    await _playSound();
+    // 1. 播放系统提示音（不等待完成）
+    _playSound();
 
-    // 2. 弹出窗口到前台
+    // 2. 弹出窗口到前台（必须先完成，后续操作依赖窗口可见）
     await _bringWindowToFront();
 
-    // 3. 窗口抖动，吸引用户注意
-    await _shakeWindow();
+    // 3. 以下操作并行执行：抖动 + 系统通知 + 应用内弹窗
+    // 窗口抖动（不等待，后台执行）
+    _shakeWindow();
 
-    // 4. 显示 Windows 系统通知
-    await _showSystemNotification(note);
+    // 系统通知（不等待）
+    _showSystemNotification(note);
 
-    // 5. 显示应用内弹窗
+    // 应用内弹窗（立即显示，不被抖动阻塞）
     if (_context != null) {
       _showReminderDialog(_context!, note);
     }
