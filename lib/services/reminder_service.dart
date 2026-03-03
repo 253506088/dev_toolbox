@@ -257,7 +257,7 @@ $targetHwnd = [IntPtr]::Zero
         $sb = New-Object System.Text.StringBuilder 256
         [Win32Foreground]::GetWindowText($hwnd, $sb, 256) | Out-Null
         $title = $sb.ToString()
-        if ($title -like "*开发者工具箱*" -or $title -like "*dev_toolbox*" -or $title -like "*DevToolbox*") {
+        if ($title -eq "开发者工具箱") {
             $script:targetHwnd = $hwnd
             return $false
         }
@@ -316,7 +316,7 @@ $targetHwnd = [IntPtr]::Zero
         $sb = New-Object System.Text.StringBuilder 256
         [Win32Shake]::GetWindowText($hwnd, $sb, 256) | Out-Null
         $title = $sb.ToString()
-        if ($title -like "*开发者工具箱*" -or $title -like "*dev_toolbox*" -or $title -like "*DevToolbox*") {
+        if ($title -eq "开发者工具箱") {
             $script:targetHwnd = $hwnd
             return $false
         }
