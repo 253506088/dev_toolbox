@@ -17,14 +17,19 @@ import 'package:dev_toolbox/tools/pdf_hidden_text_tool.dart';
 import 'package:dev_toolbox/tools/windows_file_manager_tool.dart';
 import 'package:dev_toolbox/tools/excel_format_tool.dart';
 import 'package:dev_toolbox/tools/image_resize_tool.dart';
+import 'package:dev_toolbox/tools/image_matting/image_matting_tool.dart';
+import 'package:dev_toolbox/tools/video_matting/video_matting_tool.dart';
 import 'package:dev_toolbox/theme/app_theme.dart';
 import 'package:dev_toolbox/constants/app_colors.dart';
 import 'package:dev_toolbox/widgets/neo_block.dart';
 import 'package:dev_toolbox/services/theme_service.dart';
+import 'package:media_kit/media_kit.dart';
 
 import 'package:url_launcher/url_launcher.dart';
 
 void main() {
+  WidgetsFlutterBinding.ensureInitialized();
+  MediaKit.ensureInitialized();
   runApp(
     ChangeNotifierProvider(
       create: (_) => ThemeService(),
@@ -78,6 +83,8 @@ class _MainWindowState extends State<MainWindow> {
     const PdfHiddenTextTool(),
     const WindowsFileManagerTool(),
     const ImageResizeTool(),
+    const ImageMattingTool(),
+    const VideoMattingTool(),
   ];
   Future<void> _launchUrl() async {
     final Uri url = Uri.parse('https://github.com/253506088/dev_toolbox');
@@ -180,6 +187,14 @@ class _MainWindowState extends State<MainWindow> {
                       NavigationRailDestination(
                         icon: Icon(Icons.photo_size_select_large),
                         label: Text('图片处理'),
+                      ),
+                      NavigationRailDestination(
+                        icon: Icon(Icons.auto_fix_high),
+                        label: Text('批量抠图'),
+                      ),
+                      NavigationRailDestination(
+                        icon: Icon(Icons.content_cut),
+                        label: Text('视频抠图'),
                       ),
                     ],
                     trailing: Padding(

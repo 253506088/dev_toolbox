@@ -6,6 +6,7 @@ list(APPEND FLUTTER_PLUGIN_LIST
   desktop_drop
   file_selector_linux
   local_notifier
+  media_kit_video
   pasteboard
   screen_retriever_linux
   url_launcher_linux

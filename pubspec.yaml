@@ -57,6 +57,9 @@ dependencies:
   google_fonts: ^8.0.0
   translator: ^1.0.4+1
   syncfusion_flutter_pdf: ^32.2.3
+  media_kit: ^1.2.6
+  media_kit_video: ^2.0.1
+  media_kit_libs_windows_video: ^1.0.11
 
 dev_dependencies:
   flutter_test:
@@ -101,6 +104,7 @@ flutter:
 
   assets:
     - assets/data/
+    - assets/ffmpeg/
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images
