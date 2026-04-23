@@ -1,13 +1,20 @@
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
+import 'package:image/image.dart' as img;
 
 import 'services/image_matting_service.dart';
 
 enum _ImageMattingNode {
   batch,
   single,
+}
+
+enum _BackgroundSource {
+  auto,
+  manual,
 }
 
 class ImageMattingTool extends StatefulWidget {
@@ -33,6 +40,13 @@ class _ImageMattingToolState extends State<ImageMattingTool> {
 
   int _thresholdOffset = 20;
   int _feather = 12;
+
+  _BackgroundSource _backgroundSource = _BackgroundSource.auto;
+  bool _isPickingColor = false;
+  Color? _forcedBackgroundColor;
+  String? _batchPreviewPath;
+  Uint8List? _batchPreviewBytes;
+  img.Image? _batchPreviewImage;
 
   ImageMattingOptions get _options => ImageMattingOptions(
         thresholdOffset: _thresholdOffset,
@@ -67,7 +81,54 @@ class _ImageMattingToolState extends State<ImageMattingTool> {
       _progress = 0;
       _progressText = '';
       _logText = '';
+      _isPickingColor = false;
+      _forcedBackgroundColor = null;
+      _batchPreviewPath = null;
+      _batchPreviewBytes = null;
+      _batchPreviewImage = null;
     });
+
+    await _loadFirstImagePreview(path);
+  }
+
+  Future<void> _loadFirstImagePreview(String directoryPath) async {
+    try {
+      final scan = await ImageMattingService.scanDirectoryImages(directoryPath);
+      final firstPath = scan.firstImagePath;
+
+      if (firstPath == null) {
+        if (!mounted) return;
+        setState(() {
+          _batchPreviewPath = null;
+          _batchPreviewBytes = null;
+          _batchPreviewImage = null;
+        });
+        _appendLog('当前目录没有可处理图片，无法提供取色预览');
+        return;
+      }
+
+      final bytes = await File(firstPath).readAsBytes();
+      final image = img.decodeImage(bytes);
+      if (image == null) {
+        if (!mounted) return;
+        setState(() {
+          _batchPreviewPath = firstPath;
+          _batchPreviewBytes = null;
+          _batchPreviewImage = null;
+        });
+        _appendLog('首图预览解码失败: ${_fileName(firstPath)}');
+        return;
+      }
+
+      if (!mounted) return;
+      setState(() {
+        _batchPreviewPath = firstPath;
+        _batchPreviewBytes = bytes;
+        _batchPreviewImage = image;
+      });
+    } catch (e) {
+      _appendLog('加载首图预览失败: $e');
+    }
   }
 
   Future<void> _pickSingleFile() async {
@@ -98,8 +159,22 @@ class _ImageMattingToolState extends State<ImageMattingTool> {
       return;
     }
 
+    if (_backgroundSource == _BackgroundSource.manual && _forcedBackgroundColor == null) {
+      _showSnackBar('手动取色模式下，请先在预览图中取色');
+      return;
+    }
+
     if (_isRunning) {
       return;
+    }
+
+    var runOptions = _options.copyWith(clearForcedBackground: true);
+    if (_backgroundSource == _BackgroundSource.manual && _forcedBackgroundColor != null) {
+      runOptions = runOptions.copyWith(
+        forcedBackgroundR: _channel8(_forcedBackgroundColor!.r),
+        forcedBackgroundG: _channel8(_forcedBackgroundColor!.g),
+        forcedBackgroundB: _channel8(_forcedBackgroundColor!.b),
+      );
     }
 
     setState(() {
@@ -109,12 +184,13 @@ class _ImageMattingToolState extends State<ImageMattingTool> {
       _summaryText = '';
       _lastOutputDirectory = null;
       _logText = '';
+      _isPickingColor = false;
     });
 
     try {
       final result = await ImageMattingService.matteDirectory(
         sourceDirectory: directory,
-        options: _options,
+        options: runOptions,
         onProgress: (processed, total, currentFile) {
           if (!mounted) return;
           final ratio = total <= 0 ? 0.0 : (processed / total).clamp(0, 1).toDouble();
@@ -137,6 +213,8 @@ class _ImageMattingToolState extends State<ImageMattingTool> {
         _progress = 1;
         _progressText = result.total == 0 ? '目录内没有可处理的图片' : '已完成';
       });
+
+      _appendLog('背景来源: ${_backgroundSource == _BackgroundSource.manual ? '手动取色' : '自动检测'}');
 
       if (result.total == 0) {
         _appendLog('目录内未找到支持格式(jpg/jpeg/png/webp/bmp)的图片');
@@ -198,7 +276,7 @@ class _ImageMattingToolState extends State<ImageMattingTool> {
       final result = await ImageMattingService.matteOneFile(
         inputPath: inputPath,
         outputPath: outputPath,
-        options: _options,
+        options: _options.copyWith(clearForcedBackground: true),
       );
 
       if (!mounted) return;
@@ -233,6 +311,61 @@ class _ImageMattingToolState extends State<ImageMattingTool> {
         });
       }
     }
+  }
+
+  void _togglePickingColor() {
+    if (_batchPreviewImage == null || _batchPreviewBytes == null) {
+      _showSnackBar('当前目录没有可取色的预览图片');
+      return;
+    }
+
+    setState(() {
+      _isPickingColor = !_isPickingColor;
+      if (_isPickingColor) {
+        _backgroundSource = _BackgroundSource.manual;
+      }
+    });
+  }
+
+  void _pickColorOnPreview(TapDownDetails details, BoxConstraints constraints) {
+    if (!_isPickingColor || _batchPreviewImage == null) {
+      return;
+    }
+
+    final image = _batchPreviewImage!;
+    final imageSize = Size(image.width.toDouble(), image.height.toDouble());
+    final canvasSize = Size(constraints.maxWidth, constraints.maxHeight);
+    final fitted = applyBoxFit(BoxFit.contain, imageSize, canvasSize);
+    final destination = fitted.destination;
+    final dx = (canvasSize.width - destination.width) / 2;
+    final dy = (canvasSize.height - destination.height) / 2;
+    final drawRect = Rect.fromLTWH(dx, dy, destination.width, destination.height);
+
+    if (!drawRect.contains(details.localPosition)) {
+      return;
+    }
+
+    final nx = ((details.localPosition.dx - drawRect.left) / drawRect.width).clamp(0.0, 1.0);
+    final ny = ((details.localPosition.dy - drawRect.top) / drawRect.height).clamp(0.0, 1.0);
+    final px = (nx * (image.width - 1)).round().clamp(0, image.width - 1);
+    final py = (ny * (image.height - 1)).round().clamp(0, image.height - 1);
+    final pixel = image.getPixel(px, py);
+
+    setState(() {
+      _forcedBackgroundColor = Color.fromARGB(
+        255,
+        pixel.r.toInt(),
+        pixel.g.toInt(),
+        pixel.b.toInt(),
+      );
+      _isPickingColor = false;
+      _backgroundSource = _BackgroundSource.manual;
+    });
+    _appendLog('手动取色成功: (${pixel.r.toInt()}, ${pixel.g.toInt()}, ${pixel.b.toInt()}) @($px,$py)');
+  }
+
+  int _channel8(double value) {
+    return (value * 255.0).round().clamp(0, 255);
   }
 
   Widget _buildNodeList() {
@@ -327,6 +460,138 @@ class _ImageMattingToolState extends State<ImageMattingTool> {
     );
   }
 
+  Widget _buildBackgroundSourcePanel() {
+    final hasPreview = _batchPreviewBytes != null && _batchPreviewImage != null;
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text('背景来源', style: Theme.of(context).textTheme.titleMedium),
+            const SizedBox(height: 8),
+            RadioListTile<_BackgroundSource>(
+              dense: true,
+              contentPadding: EdgeInsets.zero,
+              value: _BackgroundSource.auto,
+              groupValue: _backgroundSource,
+              title: const Text('自动检测（默认）'),
+              onChanged: _isRunning
+                  ? null
+                  : (value) {
+                      if (value == null) return;
+                      setState(() {
+                        _backgroundSource = value;
+                        _isPickingColor = false;
+                      });
+                    },
+            ),
+            RadioListTile<_BackgroundSource>(
+              dense: true,
+              contentPadding: EdgeInsets.zero,
+              value: _BackgroundSource.manual,
+              groupValue: _backgroundSource,
+              title: const Text('手动取色（一次取色作用于本次批量全部图片）'),
+              onChanged: _isRunning
+                  ? null
+                  : (value) {
+                      if (value == null) return;
+                      setState(() {
+                        _backgroundSource = value;
+                      });
+                    },
+            ),
+            const SizedBox(height: 4),
+            Row(
+              children: [
+                ElevatedButton.icon(
+                  onPressed: _isRunning ? null : _togglePickingColor,
+                  icon: Icon(_isPickingColor ? Icons.close : Icons.colorize),
+                  label: Text(_isPickingColor ? '取消取色' : '开始取色'),
+                ),
+                const SizedBox(width: 10),
+                Container(
+                  width: 26,
+                  height: 26,
+                  decoration: BoxDecoration(
+                    color: _forcedBackgroundColor ?? Colors.transparent,
+                    borderRadius: BorderRadius.circular(4),
+                    border: Border.all(color: Theme.of(context).dividerColor),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    _forcedBackgroundColor == null
+                        ? '尚未取色'
+                        : '已取色: ${_colorHex(_forcedBackgroundColor!)}',
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              _batchPreviewPath == null
+                  ? '预览图: 未加载'
+                  : '预览图: ${_fileName(_batchPreviewPath!)}',
+              overflow: TextOverflow.ellipsis,
+            ),
+            const SizedBox(height: 8),
+            Container(
+              height: 220,
+              decoration: BoxDecoration(
+                color: Colors.black,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Theme.of(context).dividerColor),
+              ),
+              child: hasPreview
+                  ? LayoutBuilder(
+                      builder: (context, constraints) {
+                        return GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTapDown: (details) => _pickColorOnPreview(details, constraints),
+                          child: Stack(
+                            fit: StackFit.expand,
+                            children: [
+                              Padding(
+                                padding: const EdgeInsets.all(8),
+                                child: Image.memory(
+                                  _batchPreviewBytes!,
+                                  fit: BoxFit.contain,
+                                ),
+                              ),
+                              if (_isPickingColor)
+                                Container(
+                                  alignment: Alignment.center,
+                                  decoration: BoxDecoration(
+                                    border: Border.all(color: Colors.yellowAccent, width: 1.4),
+                                  ),
+                                  child: const Icon(
+                                    Icons.colorize,
+                                    color: Colors.yellowAccent,
+                                    size: 38,
+                                  ),
+                                ),
+                            ],
+                          ),
+                        );
+                      },
+                    )
+                  : const Center(
+                      child: Text(
+                        '当前目录无可预览图片',
+                        style: TextStyle(color: Colors.white70),
+                      ),
+                    ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildBatchPanel() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -353,6 +618,8 @@ class _ImageMattingToolState extends State<ImageMattingTool> {
             ),
           ],
         ),
+        const SizedBox(height: 12),
+        _buildBackgroundSourcePanel(),
         const SizedBox(height: 12),
         _buildSharedOptions(),
         const SizedBox(height: 12),
@@ -438,6 +705,13 @@ class _ImageMattingToolState extends State<ImageMattingTool> {
         ),
       ),
     );
+  }
+
+  String _colorHex(Color color) {
+    final r = _channel8(color.r).toRadixString(16).padLeft(2, '0');
+    final g = _channel8(color.g).toRadixString(16).padLeft(2, '0');
+    final b = _channel8(color.b).toRadixString(16).padLeft(2, '0');
+    return '#${(r + g + b).toUpperCase()}';
   }
 
   @override

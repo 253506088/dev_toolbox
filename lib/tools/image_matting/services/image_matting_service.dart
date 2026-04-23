@@ -9,18 +9,70 @@ import 'package:image/image.dart' as img;
 class ImageMattingOptions {
   final int thresholdOffset;
   final int feather;
+  final int? forcedBackgroundR;
+  final int? forcedBackgroundG;
+  final int? forcedBackgroundB;
 
   const ImageMattingOptions({
     this.thresholdOffset = 20,
     this.feather = 12,
+    this.forcedBackgroundR,
+    this.forcedBackgroundG,
+    this.forcedBackgroundB,
   });
 
   Map<String, dynamic> toMap() {
-    return {
+    final map = <String, dynamic>{
       'thresholdOffset': thresholdOffset,
       'feather': feather,
     };
+    if (forcedBackgroundR != null &&
+        forcedBackgroundG != null &&
+        forcedBackgroundB != null) {
+      map['forcedBackgroundR'] = forcedBackgroundR;
+      map['forcedBackgroundG'] = forcedBackgroundG;
+      map['forcedBackgroundB'] = forcedBackgroundB;
+    }
+    return map;
   }
+
+  bool get hasForcedBackground =>
+      forcedBackgroundR != null &&
+      forcedBackgroundG != null &&
+      forcedBackgroundB != null;
+
+  ImageMattingOptions copyWith({
+    int? thresholdOffset,
+    int? feather,
+    int? forcedBackgroundR,
+    int? forcedBackgroundG,
+    int? forcedBackgroundB,
+    bool clearForcedBackground = false,
+  }) {
+    return ImageMattingOptions(
+      thresholdOffset: thresholdOffset ?? this.thresholdOffset,
+      feather: feather ?? this.feather,
+      forcedBackgroundR: clearForcedBackground
+          ? null
+          : forcedBackgroundR ?? this.forcedBackgroundR,
+      forcedBackgroundG: clearForcedBackground
+          ? null
+          : forcedBackgroundG ?? this.forcedBackgroundG,
+      forcedBackgroundB: clearForcedBackground
+          ? null
+          : forcedBackgroundB ?? this.forcedBackgroundB,
+    );
+  }
+}
+
+class ImageMattingDirectoryScanResult {
+  final List<File> files;
+  final String? firstImagePath;
+
+  const ImageMattingDirectoryScanResult({
+    required this.files,
+    required this.firstImagePath,
+  });
 }
 
 class ImageMattingItemResult {
@@ -62,6 +114,27 @@ class ImageMattingService {
     'bmp',
   };
 
+  static Future<ImageMattingDirectoryScanResult> scanDirectoryImages(
+    String sourceDirectory,
+  ) async {
+    final directory = Directory(sourceDirectory);
+    if (!await directory.exists()) {
+      throw Exception('目录不存在: $sourceDirectory');
+    }
+
+    final entities = await directory.list(followLinks: false).toList();
+    final files = entities
+        .whereType<File>()
+        .where((file) => _isSupportedImagePath(file.path))
+        .toList()
+      ..sort((a, b) => a.path.toLowerCase().compareTo(b.path.toLowerCase()));
+
+    return ImageMattingDirectoryScanResult(
+      files: files,
+      firstImagePath: files.isEmpty ? null : files.first.path,
+    );
+  }
+
   static Future<String> createTimestampOutputDirectory(String sourceDirectory) async {
     final now = DateTime.now();
     final stamp =
@@ -85,17 +158,8 @@ class ImageMattingService {
     required ImageMattingOptions options,
     required void Function(int processed, int total, String currentFile) onProgress,
   }) async {
-    final directory = Directory(sourceDirectory);
-    if (!await directory.exists()) {
-      throw Exception('目录不存在: $sourceDirectory');
-    }
-
-    final entities = await directory.list(followLinks: false).toList();
-    final files = entities
-        .whereType<File>()
-        .where((file) => _isSupportedImagePath(file.path))
-        .toList()
-      ..sort((a, b) => a.path.toLowerCase().compareTo(b.path.toLowerCase()));
+    final scan = await scanDirectoryImages(sourceDirectory);
+    final files = scan.files;
 
     final outputDirectory = await createTimestampOutputDirectory(sourceDirectory);
 
@@ -219,6 +283,9 @@ Map<String, dynamic> _matteOneFileOnIsolate(Map<String, dynamic> args) {
   final outputPath = args['outputPath']?.toString() ?? '';
   final thresholdOffset = (args['thresholdOffset'] as int?) ?? 20;
   final feather = (args['feather'] as int?) ?? 12;
+  final forcedBackgroundR = (args['forcedBackgroundR'] as int?);
+  final forcedBackgroundG = (args['forcedBackgroundG'] as int?);
+  final forcedBackgroundB = (args['forcedBackgroundB'] as int?);
 
   try {
     final bytes = File(inputPath).readAsBytesSync();
@@ -230,7 +297,12 @@ Map<String, dynamic> _matteOneFileOnIsolate(Map<String, dynamic> args) {
       };
     }
 
-    final background = _detectBackgroundColor(source);
+    final hasForcedBackground = forcedBackgroundR != null &&
+        forcedBackgroundG != null &&
+        forcedBackgroundB != null;
+    final background = hasForcedBackground
+        ? _Rgb(forcedBackgroundR!, forcedBackgroundG!, forcedBackgroundB!)
+        : _detectBackgroundColor(source);
     final output = _buildAlphaImage(
       source,
       background,
@@ -243,7 +315,7 @@ Map<String, dynamic> _matteOneFileOnIsolate(Map<String, dynamic> args) {
     return {
       'success': true,
       'message':
-          '背景色(${background.r}, ${background.g}, ${background.b})，阈值偏移=$thresholdOffset，柔边=$feather',
+          '${hasForcedBackground ? '手动取色' : '自动检测'}背景色(${background.r}, ${background.g}, ${background.b})，阈值偏移=$thresholdOffset，柔边=$feather',
     };
   } catch (e) {
     return {
@@ -422,7 +494,11 @@ img.Image _buildAlphaImage(
     tryPush(x, y + 1);
   }
 
-  final output = source;
+  final output = img.Image(
+    width: width,
+    height: height,
+    numChannels: 4,
+  );
 
   for (var y = 0; y < height; y++) {
     for (var x = 0; x < width; x++) {
