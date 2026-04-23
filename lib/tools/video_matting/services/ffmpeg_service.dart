@@ -6,6 +6,46 @@ import 'package:path_provider/path_provider.dart';
 
 import '../models/matting_config.dart';
 
+class FrameSequenceExtractConfig {
+  final String inputPath;
+  final String outputDirectory;
+  final double fps;
+  final double startSeconds;
+  final double endSeconds;
+  final int maxFrames;
+  final int cropLeft;
+  final int cropTop;
+  final int cropRight;
+  final int cropBottom;
+
+  const FrameSequenceExtractConfig({
+    required this.inputPath,
+    required this.outputDirectory,
+    required this.fps,
+    required this.startSeconds,
+    required this.endSeconds,
+    required this.maxFrames,
+    this.cropLeft = 0,
+    this.cropTop = 0,
+    this.cropRight = 0,
+    this.cropBottom = 0,
+  });
+}
+
+class FrameSequenceExtractResult {
+  final bool success;
+  final String outputDirectory;
+  final int frameCount;
+  final String message;
+
+  const FrameSequenceExtractResult({
+    required this.success,
+    required this.outputDirectory,
+    required this.frameCount,
+    required this.message,
+  });
+}
+
 /// FFmpeg 服务：负责检测、命令构建、执行与进度解析。
 class FfmpegService {
   static String? _cachedFfmpegPath;
@@ -104,6 +144,175 @@ class FfmpegService {
     }
 
     return null;
+  }
+
+  /// 获取视频原始帧率（FPS）。
+  static Future<double?> getVideoFps(String inputPath) async {
+    final ffmpeg = await findFfmpeg();
+    if (ffmpeg == null) return null;
+
+    try {
+      final result = await Process.run(
+        ffmpeg,
+        ['-i', inputPath],
+        stdoutEncoding: SystemEncoding(),
+        stderrEncoding: SystemEncoding(),
+      );
+      final merged = '${result.stdout}\n${result.stderr}';
+      return _parseFps(merged);
+    } catch (e) {
+      debugPrint('获取视频帧率失败: $e');
+      return null;
+    }
+  }
+
+  /// 预算可提取帧数：按开始/结束时间和目标 FPS 估算，再受最大帧数限制。
+  static int estimateFrameCount({
+    required double startSeconds,
+    required double endSeconds,
+    required double fps,
+    required int maxFrames,
+  }) {
+    final duration = (endSeconds - startSeconds).clamp(0.0, double.infinity);
+    if (duration <= 0 || fps <= 0 || maxFrames <= 0) {
+      return 0;
+    }
+
+    var estimated = (duration * fps).floor();
+    if (estimated <= 0) {
+      estimated = 1;
+    }
+    return estimated > maxFrames ? maxFrames : estimated;
+  }
+
+  /// 在用户选择目录下创建本次抽帧目录：序列帧-YYYYMMDDHHMMSS。
+  static Future<String> createFrameSequenceOutputDirectory(
+    String selectedDirectory,
+  ) async {
+    final now = DateTime.now();
+    final stamp =
+        '${now.year}${_pad2(now.month)}${_pad2(now.day)}${_pad2(now.hour)}${_pad2(now.minute)}${_pad2(now.second)}';
+
+    final base = '序列帧-$stamp';
+    var candidate = '$selectedDirectory${Platform.pathSeparator}$base';
+    var suffix = 1;
+
+    while (await Directory(candidate).exists()) {
+      candidate = '$selectedDirectory${Platform.pathSeparator}$base-$suffix';
+      suffix += 1;
+    }
+
+    await Directory(candidate).create(recursive: true);
+    return candidate;
+  }
+
+  /// 抽取视频序列帧，输出命名格式为 frame_00001.png。
+  static Future<FrameSequenceExtractResult> extractFrameSequence({
+    required FrameSequenceExtractConfig config,
+    required void Function(double progress) onProgress,
+    required void Function(String message) onLog,
+  }) async {
+    final ffmpeg = await findFfmpeg();
+    if (ffmpeg == null) {
+      return FrameSequenceExtractResult(
+        success: false,
+        outputDirectory: config.outputDirectory,
+        frameCount: 0,
+        message: '未找到 ffmpeg.exe',
+      );
+    }
+
+    await Directory(config.outputDirectory).create(recursive: true);
+
+    final duration = (config.endSeconds - config.startSeconds)
+        .clamp(0.0, double.infinity);
+    final filterChain = _buildFrameSequenceFilter(config);
+    final outputPattern =
+        '${config.outputDirectory}${Platform.pathSeparator}frame_%05d.png';
+
+    final args = <String>[
+      '-progress',
+      'pipe:2',
+      '-nostats',
+      '-ss',
+      _formatSeconds(config.startSeconds),
+      '-to',
+      _formatSeconds(config.endSeconds),
+      '-i',
+      config.inputPath,
+      if (filterChain.isNotEmpty) ...['-vf', filterChain],
+      '-frames:v',
+      config.maxFrames.toString(),
+      '-start_number',
+      '1',
+      '-y',
+      outputPattern,
+    ];
+
+    onLog('执行命令: ffmpeg ${args.join(' ')}');
+    onProgress(0);
+
+    try {
+      final process = await Process.start(ffmpeg, args);
+      final stderrDone = Completer<void>();
+      var stderrBuffer = '';
+
+      process.stderr.transform(SystemEncoding().decoder).listen((chunk) {
+        stderrBuffer += chunk;
+        final lines = stderrBuffer.split(RegExp(r'\r?\n'));
+        stderrBuffer = lines.removeLast();
+
+        for (final rawLine in lines) {
+          final line = rawLine.trim();
+          if (line.isEmpty) {
+            continue;
+          }
+
+          onLog(line);
+          if (duration > 0) {
+            final progress = _parseProgressByPipe(line, duration);
+            if (progress != null) {
+              onProgress(progress);
+              continue;
+            }
+
+            final progressByLegacy = _parseProgressByLegacyTime(line, duration);
+            if (progressByLegacy != null) {
+              onProgress(progressByLegacy);
+            }
+          }
+        }
+      }, onDone: () => stderrDone.complete());
+
+      process.stdout.drain();
+      final exitCode = await process.exitCode;
+      await stderrDone.future;
+
+      final frameCount = await _countExportedFrames(config.outputDirectory);
+      if (exitCode == 0) {
+        onProgress(1.0);
+        return FrameSequenceExtractResult(
+          success: true,
+          outputDirectory: config.outputDirectory,
+          frameCount: frameCount,
+          message: '抽帧完成',
+        );
+      }
+
+      return FrameSequenceExtractResult(
+        success: false,
+        outputDirectory: config.outputDirectory,
+        frameCount: frameCount,
+        message: 'FFmpeg 退出码: $exitCode',
+      );
+    } catch (e) {
+      return FrameSequenceExtractResult(
+        success: false,
+        outputDirectory: config.outputDirectory,
+        frameCount: await _countExportedFrames(config.outputDirectory),
+        message: '执行异常: $e',
+      );
+    }
   }
 
   /// 从指定时刻截图一帧，返回 PNG 临时文件路径。
@@ -498,5 +707,95 @@ class FfmpegService {
       return lines.join(' | ');
     }
     return lines.sublist(lines.length - count).join(' | ');
+  }
+
+  static String _buildFrameSequenceFilter(FrameSequenceExtractConfig config) {
+    final filters = <String>[];
+
+    if (config.cropLeft > 0 ||
+        config.cropTop > 0 ||
+        config.cropRight > 0 ||
+        config.cropBottom > 0) {
+      final crop =
+          'crop=in_w-${config.cropLeft}-${config.cropRight}:in_h-${config.cropTop}-${config.cropBottom}:${config.cropLeft}:${config.cropTop}';
+      filters.add(crop);
+    }
+
+    filters.add('fps=${_formatFps(config.fps)}');
+    return filters.join(',');
+  }
+
+  static String _formatFps(double fps) {
+    var text = fps.toStringAsFixed(6);
+    text = text.replaceFirst(RegExp(r'0+$'), '');
+    text = text.replaceFirst(RegExp(r'\.$'), '');
+    return text;
+  }
+
+  static String _formatSeconds(double seconds) {
+    final safe = seconds.isNaN ? 0.0 : seconds.clamp(0.0, double.infinity);
+    return safe.toStringAsFixed(3);
+  }
+
+  static double? _parseFps(String text) {
+    final videoLine =
+        RegExp(r'Video:.*', caseSensitive: false).firstMatch(text)?.group(0) ??
+            text;
+
+    final ratioMatch = RegExp(
+      r'(\d+(?:\.\d+)?)\s*/\s*(\d+(?:\.\d+)?)\s*fps',
+      caseSensitive: false,
+    ).firstMatch(videoLine);
+    if (ratioMatch != null) {
+      final numerator = double.tryParse(ratioMatch.group(1)!);
+      final denominator = double.tryParse(ratioMatch.group(2)!);
+      if (numerator != null &&
+          denominator != null &&
+          denominator > 0 &&
+          numerator > 0) {
+        return numerator / denominator;
+      }
+    }
+
+    final plainMatch = RegExp(
+      r'(\d+(?:\.\d+)?)\s*fps',
+      caseSensitive: false,
+    ).firstMatch(videoLine);
+    if (plainMatch != null) {
+      final value = double.tryParse(plainMatch.group(1)!);
+      if (value != null && value > 0) {
+        return value;
+      }
+    }
+    return null;
+  }
+
+  static Future<int> _countExportedFrames(String outputDirectory) async {
+    try {
+      final dir = Directory(outputDirectory);
+      if (!await dir.exists()) {
+        return 0;
+      }
+
+      var count = 0;
+      await for (final entity in dir.list(followLinks: false)) {
+        if (entity is! File) {
+          continue;
+        }
+        final name = entity.uri.pathSegments.isEmpty
+            ? ''
+            : entity.uri.pathSegments.last;
+        if (RegExp(r'^frame_\d{5}\.png$', caseSensitive: false).hasMatch(name)) {
+          count += 1;
+        }
+      }
+      return count;
+    } catch (_) {
+      return 0;
+    }
+  }
+
+  static String _pad2(int value) {
+    return value >= 10 ? '$value' : '0$value';
   }
 }

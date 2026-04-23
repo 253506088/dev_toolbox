@@ -18,6 +18,7 @@ import 'package:dev_toolbox/tools/windows_file_manager_tool.dart';
 import 'package:dev_toolbox/tools/excel_format_tool.dart';
 import 'package:dev_toolbox/tools/image_resize_tool.dart';
 import 'package:dev_toolbox/tools/image_matting/image_matting_tool.dart';
+import 'package:dev_toolbox/tools/video_frame_extract_tool.dart';
 import 'package:dev_toolbox/tools/video_matting/video_matting_tool.dart';
 import 'package:dev_toolbox/theme/app_theme.dart';
 import 'package:dev_toolbox/constants/app_colors.dart';
@@ -84,6 +85,7 @@ class _MainWindowState extends State<MainWindow> {
     const WindowsFileManagerTool(),
     const ImageResizeTool(),
     const ImageMattingTool(),
+    const VideoFrameExtractTool(),
     const VideoMattingTool(),
   ];
   Future<void> _launchUrl() async {
@@ -191,6 +193,10 @@ class _MainWindowState extends State<MainWindow> {
                       NavigationRailDestination(
                         icon: Icon(Icons.auto_fix_high),
                         label: Text('批量抠图'),
+                      ),
+                      NavigationRailDestination(
+                        icon: Icon(Icons.filter_frames),
+                        label: Text('视频转序列帧'),
                       ),
                       NavigationRailDestination(
                         icon: Icon(Icons.content_cut),
