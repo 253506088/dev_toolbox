@@ -7,15 +7,9 @@ import 'package:image/image.dart' as img;
 
 import 'services/image_matting_service.dart';
 
-enum _ImageMattingNode {
-  batch,
-  single,
-}
+enum _ImageMattingNode { batch, single }
 
-enum _BackgroundSource {
-  auto,
-  manual,
-}
+enum _BackgroundSource { auto, manual }
 
 class ImageMattingTool extends StatefulWidget {
   const ImageMattingTool({super.key});
@@ -25,6 +19,7 @@ class ImageMattingTool extends StatefulWidget {
 }
 
 class _ImageMattingToolState extends State<ImageMattingTool> {
+  final ScrollController _panelScrollController = ScrollController();
   _ImageMattingNode _selectedNode = _ImageMattingNode.batch;
 
   String? _selectedDirectory;
@@ -48,14 +43,14 @@ class _ImageMattingToolState extends State<ImageMattingTool> {
   Uint8List? _batchPreviewBytes;
   img.Image? _batchPreviewImage;
 
-  ImageMattingOptions get _options => ImageMattingOptions(
-        thresholdOffset: _thresholdOffset,
-        feather: _feather,
-      );
+  ImageMattingOptions get _options =>
+      ImageMattingOptions(thresholdOffset: _thresholdOffset, feather: _feather);
 
   void _showSnackBar(String message) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
   void _appendLog(String text) {
@@ -159,7 +154,8 @@ class _ImageMattingToolState extends State<ImageMattingTool> {
       return;
     }
 
-    if (_backgroundSource == _BackgroundSource.manual && _forcedBackgroundColor == null) {
+    if (_backgroundSource == _BackgroundSource.manual &&
+        _forcedBackgroundColor == null) {
       _showSnackBar('手动取色模式下，请先在预览图中取色');
       return;
     }
@@ -169,7 +165,8 @@ class _ImageMattingToolState extends State<ImageMattingTool> {
     }
 
     var runOptions = _options.copyWith(clearForcedBackground: true);
-    if (_backgroundSource == _BackgroundSource.manual && _forcedBackgroundColor != null) {
+    if (_backgroundSource == _BackgroundSource.manual &&
+        _forcedBackgroundColor != null) {
       runOptions = runOptions.copyWith(
         forcedBackgroundR: _channel8(_forcedBackgroundColor!.r),
         forcedBackgroundG: _channel8(_forcedBackgroundColor!.g),
@@ -193,7 +190,9 @@ class _ImageMattingToolState extends State<ImageMattingTool> {
         options: runOptions,
         onProgress: (processed, total, currentFile) {
           if (!mounted) return;
-          final ratio = total <= 0 ? 0.0 : (processed / total).clamp(0, 1).toDouble();
+          final ratio = total <= 0
+              ? 0.0
+              : (processed / total).clamp(0, 1).toDouble();
           setState(() {
             _progress = ratio;
             _progressText = '处理中: $processed/$total  当前文件: $currentFile';
@@ -214,7 +213,9 @@ class _ImageMattingToolState extends State<ImageMattingTool> {
         _progressText = result.total == 0 ? '目录内没有可处理的图片' : '已完成';
       });
 
-      _appendLog('背景来源: ${_backgroundSource == _BackgroundSource.manual ? '手动取色' : '自动检测'}');
+      _appendLog(
+        '背景来源: ${_backgroundSource == _BackgroundSource.manual ? '手动取色' : '自动检测'}',
+      );
 
       if (result.total == 0) {
         _appendLog('目录内未找到支持格式(jpg/jpeg/png/webp/bmp)的图片');
@@ -265,8 +266,14 @@ class _ImageMattingToolState extends State<ImageMattingTool> {
     try {
       final inputFile = File(inputPath);
       final parentDirectory = inputFile.parent.path;
-      final outputDirectory = await ImageMattingService.createTimestampOutputDirectory(parentDirectory);
-      final outputPath = ImageMattingService.buildPngOutputPath(outputDirectory, inputPath);
+      final outputDirectory =
+          await ImageMattingService.createTimestampOutputDirectory(
+            parentDirectory,
+          );
+      final outputPath = ImageMattingService.buildPngOutputPath(
+        outputDirectory,
+        inputPath,
+      );
 
       setState(() {
         _progress = 0.4;
@@ -339,14 +346,21 @@ class _ImageMattingToolState extends State<ImageMattingTool> {
     final destination = fitted.destination;
     final dx = (canvasSize.width - destination.width) / 2;
     final dy = (canvasSize.height - destination.height) / 2;
-    final drawRect = Rect.fromLTWH(dx, dy, destination.width, destination.height);
+    final drawRect = Rect.fromLTWH(
+      dx,
+      dy,
+      destination.width,
+      destination.height,
+    );
 
     if (!drawRect.contains(details.localPosition)) {
       return;
     }
 
-    final nx = ((details.localPosition.dx - drawRect.left) / drawRect.width).clamp(0.0, 1.0);
-    final ny = ((details.localPosition.dy - drawRect.top) / drawRect.height).clamp(0.0, 1.0);
+    final nx = ((details.localPosition.dx - drawRect.left) / drawRect.width)
+        .clamp(0.0, 1.0);
+    final ny = ((details.localPosition.dy - drawRect.top) / drawRect.height)
+        .clamp(0.0, 1.0);
     final px = (nx * (image.width - 1)).round().clamp(0, image.width - 1);
     final py = (ny * (image.height - 1)).round().clamp(0, image.height - 1);
     final pixel = image.getPixel(px, py);
@@ -361,11 +375,19 @@ class _ImageMattingToolState extends State<ImageMattingTool> {
       _isPickingColor = false;
       _backgroundSource = _BackgroundSource.manual;
     });
-    _appendLog('手动取色成功: (${pixel.r.toInt()}, ${pixel.g.toInt()}, ${pixel.b.toInt()}) @($px,$py)');
+    _appendLog(
+      '手动取色成功: (${pixel.r.toInt()}, ${pixel.g.toInt()}, ${pixel.b.toInt()}) @($px,$py)',
+    );
   }
 
   int _channel8(double value) {
     return (value * 255.0).round().clamp(0, 255);
+  }
+
+  @override
+  void dispose() {
+    _panelScrollController.dispose();
+    super.dispose();
   }
 
   Widget _buildNodeList() {
@@ -400,7 +422,9 @@ class _ImageMattingToolState extends State<ImageMattingTool> {
     final selected = _selectedNode == node;
 
     return Material(
-      color: selected ? Theme.of(context).colorScheme.primaryContainer : Colors.transparent,
+      color: selected
+          ? Theme.of(context).colorScheme.primaryContainer
+          : Colors.transparent,
       child: ListTile(
         leading: Icon(icon),
         title: Text(title),
@@ -551,7 +575,8 @@ class _ImageMattingToolState extends State<ImageMattingTool> {
                       builder: (context, constraints) {
                         return GestureDetector(
                           behavior: HitTestBehavior.opaque,
-                          onTapDown: (details) => _pickColorOnPreview(details, constraints),
+                          onTapDown: (details) =>
+                              _pickColorOnPreview(details, constraints),
                           child: Stack(
                             fit: StackFit.expand,
                             children: [
@@ -566,7 +591,10 @@ class _ImageMattingToolState extends State<ImageMattingTool> {
                                 Container(
                                   alignment: Alignment.center,
                                   decoration: BoxDecoration(
-                                    border: Border.all(color: Colors.yellowAccent, width: 1.4),
+                                    border: Border.all(
+                                      color: Colors.yellowAccent,
+                                      width: 1.4,
+                                    ),
                                   ),
                                   child: const Icon(
                                     Icons.colorize,
@@ -600,7 +628,9 @@ class _ImageMattingToolState extends State<ImageMattingTool> {
           children: [
             Expanded(
               child: Text(
-                _selectedDirectory == null ? '未选择目录' : '目标目录: $_selectedDirectory',
+                _selectedDirectory == null
+                    ? '未选择目录'
+                    : '目标目录: $_selectedDirectory',
                 overflow: TextOverflow.ellipsis,
               ),
             ),
@@ -636,7 +666,9 @@ class _ImageMattingToolState extends State<ImageMattingTool> {
           children: [
             Expanded(
               child: Text(
-                _selectedFilePath == null ? '未选择图片' : '目标图片: $_selectedFilePath',
+                _selectedFilePath == null
+                    ? '未选择图片'
+                    : '目标图片: $_selectedFilePath',
                 overflow: TextOverflow.ellipsis,
               ),
             ),
@@ -663,45 +695,43 @@ class _ImageMattingToolState extends State<ImageMattingTool> {
   }
 
   Widget _buildStatusArea() {
-    return Expanded(
-      child: Card(
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              if (_isRunning) ...[
-                LinearProgressIndicator(value: _progress <= 0 ? null : _progress),
-                const SizedBox(height: 8),
-              ],
-              if (_progressText.isNotEmpty) Text('进度: $_progressText'),
-              if (_summaryText.isNotEmpty) ...[
-                const SizedBox(height: 8),
-                Text(_summaryText),
-              ],
-              if (_lastOutputDirectory != null) ...[
-                const SizedBox(height: 8),
-                Text('输出目录: $_lastOutputDirectory'),
-              ],
-              const SizedBox(height: 10),
-              Text('日志', style: Theme.of(context).textTheme.titleSmall),
-              const SizedBox(height: 6),
-              Expanded(
-                child: Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    border: Border.all(color: Theme.of(context).dividerColor),
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: SingleChildScrollView(
-                    child: SelectableText(
-                      _logText.isEmpty ? '暂无日志' : _logText,
-                    ),
-                  ),
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (_isRunning) ...[
+              LinearProgressIndicator(value: _progress <= 0 ? null : _progress),
+              const SizedBox(height: 8),
+            ],
+            if (_progressText.isNotEmpty) Text('进度: $_progressText'),
+            if (_summaryText.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Text(_summaryText),
+            ],
+            if (_lastOutputDirectory != null) ...[
+              const SizedBox(height: 8),
+              Text('输出目录: $_lastOutputDirectory'),
+            ],
+            const SizedBox(height: 10),
+            Text('日志', style: Theme.of(context).textTheme.titleSmall),
+            const SizedBox(height: 6),
+            SizedBox(
+              height: 180,
+              child: Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  border: Border.all(color: Theme.of(context).dividerColor),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: SingleChildScrollView(
+                  child: SelectableText(_logText.isEmpty ? '暂无日志' : _logText),
                 ),
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
@@ -724,7 +754,25 @@ class _ImageMattingToolState extends State<ImageMattingTool> {
           _buildNodeList(),
           const SizedBox(width: 12),
           Expanded(
-            child: _selectedNode == _ImageMattingNode.batch ? _buildBatchPanel() : _buildSinglePanel(),
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                return Scrollbar(
+                  controller: _panelScrollController,
+                  thumbVisibility: true,
+                  child: SingleChildScrollView(
+                    controller: _panelScrollController,
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(
+                        minHeight: constraints.maxHeight,
+                      ),
+                      child: _selectedNode == _ImageMattingNode.batch
+                          ? _buildBatchPanel()
+                          : _buildSinglePanel(),
+                    ),
+                  ),
+                );
+              },
+            ),
           ),
         ],
       ),
